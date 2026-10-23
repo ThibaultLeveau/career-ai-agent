@@ -1,6 +1,6 @@
 # Career AI
 
-An AI-powered personal portfolio foundation. This repository currently contains infrastructure, a database-backed API health endpoint, and a placeholder homepage. Portfolio features, authentication, embeddings, and RAG are not implemented.
+An AI-powered personal portfolio with a public placeholder homepage and authenticated administration. The admin panel manages account credentials, encrypted OpenAI/Anthropic keys, and RAG configuration with provider connection tests. Document ingestion, indexing, and public chat are not implemented yet.
 
 ## Quick start
 
@@ -10,10 +10,22 @@ Install Git and Docker Engine or Docker Desktop with Docker Compose v2.20+ and B
 git clone https://github.com/ThibaultLeveau/career-ai-agent.git
 cd career-ai-agent
 cp .env.example .env
+```
+
+Set `ADMIN_INITIAL_USERNAME` and a unique `ADMIN_INITIAL_PASSWORD` (12+ characters) in `.env`. Generate `SETTINGS_ENCRYPTION_KEY` with the following command and copy its output to `.env`:
+
+```sh
+docker run --rm python:3.14.9-slim-bookworm python -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
 docker compose up --build
 ```
 
 Open [the portfolio](http://localhost:3000), [API documentation](http://localhost:8000/docs), or [API health](http://localhost:8000/health). Startup downloads dependencies, builds the applications, waits for PostgreSQL, and runs migrations before starting the API.
+
+Open [administration](http://localhost:3000/admin) and sign in with the initial credentials. Startup creates the single account only when absent. Later changes in **Settings → Account & security** are stored in PostgreSQL and never overwritten by `.env`; initial credential variables can be removed after bootstrap. Credential changes require the current password and sign out all sessions.
+
+`APP_ORIGIN` must match the exact browser origin, including the port (default `http://localhost:3000`). For HTTPS deployment, set it to the public HTTPS origin; session cookies then require HTTPS. Keep `SETTINGS_ENCRYPTION_KEY` stable and backed up with the database: replacing it prevents decryption of existing provider keys. Neither provider keys nor this encryption key belong in frontend environment variables.
+
+In **Settings → AI & RAG**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Retrieval and chunking values configure the future pipeline, not a running RAG service.
 
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
 
@@ -60,7 +72,7 @@ Run the same checks used by GitHub Actions (requires a POSIX shell and curl):
 sh scripts/check.sh
 ```
 
-This uses an isolated Compose project on ports 18000/13000, validates both configurations, runs backend lint/format/tests and frontend lint/types, builds production images, checks HTTP responses and migrations, and verifies database persistence after container recreation. Its temporary database is removed on exit. Set `CHECK_API_PORT` and `CHECK_WEB_PORT` if those ports are occupied.
+This uses an isolated Compose project on ports 18000/13000, validates configuration, runs backend lint/format/tests (including PostgreSQL integration tests) and frontend lint/types, builds production images, runs Chromium browser tests, checks migrations, and verifies database persistence after container recreation. Provider APIs are mocked; no real provider credentials are required. Its temporary database is removed on exit. Set `CHECK_API_PORT` and `CHECK_WEB_PORT` if those ports are occupied. Browser screenshots are written to `apps/web/test-results/` (ignored by Git); the first browser image build downloads Chromium.
 
 For focused checks after building development images:
 
@@ -76,7 +88,7 @@ The frontend production build runs as part of its runtime image build. To check 
 
 ## Database and migrations
 
-The first migration enables `vector`; there are no domain tables. Register future models with the declarative base so Alembic can discover their metadata.
+The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
 
 ```sh
 docker compose exec api alembic current

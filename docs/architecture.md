@@ -5,8 +5,8 @@ The repository is a small polyglot monorepo. Each application owns its manifest,
 ## Boundaries
 
 - **API:** FastAPI wires routes and application lifetime. Configuration validates environment variables once. The database module owns the engine, declarative base, and request-scoped sessions. Synchronous database work runs in synchronous handlers.
-- **Web:** Next.js App Router renders a static placeholder using TypeScript and Tailwind. It does not call the API yet.
-- **Database:** PostgreSQL stores persistent data; pgvector is enabled for future work. No vector models, embeddings, retrieval, or application tables exist.
+- **Web:** Next.js App Router renders the public placeholder and protected admin pages. Server components check the session before rendering; client forms call a fixed-destination, same-origin `/api/admin/*` proxy.
+- **Database:** PostgreSQL stores the administrator, session token hashes, encrypted provider keys, and RAG configuration. pgvector is enabled for future ingestion/retrieval work.
 - **Migrations:** Alembic imports the same configuration and metadata as the API. The one-shot migration service must succeed before the API starts.
 
 ## Runtime
@@ -14,8 +14,10 @@ The repository is a small polyglot monorepo. Each application owns its manifest,
 ```mermaid
 flowchart LR
     Browser --> Web[Next.js :3000]
+    Web --> API[FastAPI :8000]
     HealthClient[Health client] --> API[FastAPI :8000]
     API --> DB[(PostgreSQL + pgvector)]
+    API --> Providers[OpenAI / Anthropic]
     Migration[Alembic migration job] --> DB
 ```
 
@@ -26,3 +28,5 @@ The database volume mounts at `/var/lib/postgresql`, matching PostgreSQL 18's la
 Production images run applications as non-root users and contain no development tools. Development targets add tools and mount source, keeping dependencies and generated output in containers. Database creation uses the official image's local bootstrap role; deployment role separation is deferred.
 
 See [ADR 0001](adr/0001-monorepo-foundation.md) for decisions and [README](../README.md) for commands.
+
+Admin endpoints enforce database-backed cookie sessions independently of the web layer. Mutations require the configured `APP_ORIGIN`. Sessions last 12 hours and are revoked on credential changes. Provider calls are limited to explicit connection tests; keys are encrypted with Fernet using a separate environment secret. Migration/bootstrap runs before API startup and never replaces an existing account or configuration. See [ADR 0002](adr/0002-admin-and-rag-settings.md).

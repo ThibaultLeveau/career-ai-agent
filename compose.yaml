@@ -1,14 +1,19 @@
 name: career-ai-agent
 
+x-database-environment: &database-environment
+  POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env}
+  POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env}
+
 x-api: &api
   image: ${COMPOSE_PROJECT_NAME:-career-ai-agent}-api
   build:
     context: ./apps/api
     target: runtime
-  environment: &database-environment
-    POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env}
-    POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env}
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env}
+  environment: &api-environment
+    <<: *database-environment
+    APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+    SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
 
 services:
   db:
@@ -25,7 +30,11 @@ services:
 
   migrate:
     <<: *api
-    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *api-environment
+      ADMIN_INITIAL_USERNAME: ${ADMIN_INITIAL_USERNAME:-}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+    command: ["sh", "-c", "alembic upgrade head && python -m app.bootstrap"]
     depends_on:
       db:
         condition: service_healthy
@@ -48,6 +57,8 @@ services:
     build:
       context: ./apps/web
       target: runtime
+    environment:
+      API_INTERNAL_URL: http://api:8000
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
