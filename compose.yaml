@@ -1,0 +1,61 @@
+name: career-ai-agent
+
+x-api: &api
+  image: ${COMPOSE_PROJECT_NAME:-career-ai-agent}-api
+  build:
+    context: ./apps/api
+    target: runtime
+  environment: &database-environment
+    POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env}
+    POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env}
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    environment: *database-environment
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  migrate:
+    <<: *api
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *api
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8)"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+
+  web:
+    build:
+      context: ./apps/web
+      target: runtime
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres_data:

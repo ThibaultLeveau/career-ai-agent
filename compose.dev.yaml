@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      target: development
+    volumes:
+      - ./apps/api/app:/app/app:ro
+      - ./apps/api/tests:/app/tests:ro
+      - ./apps/api/migrations:/app/migrations
+
+  migrate:
+    build:
+      target: development
+    volumes:
+      - ./apps/api/migrations:/app/migrations
+
+  web:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./apps/web/src:/app/src:ro
