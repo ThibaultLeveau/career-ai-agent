@@ -36,3 +36,5 @@ Admin endpoints enforce database-backed cookie sessions independently of the web
 Career content uses authenticated `/admin/jobs`, `/admin/projects`, `/admin/skills`, and `/admin/documents` CRUD endpoints. Document create/update accepts multipart forms; downloads use `/admin/documents/{id}/file`. The proxy preserves binary bodies and download headers. See [ADR 0003](adr/0003-career-content.md).
 
 The dedicated worker claims PostgreSQL jobs with row locks and leases, processes source revisions, and publishes complete vector sets atomically. See [ADR 0004](adr/0004-rag-ingestion.md).
+
+Jobs and projects each serialize to one document before token chunking; project documents contain skill keywords. Skills are not standalone ingestion sources. Admin overview totals count current items rather than historical runs, using the same status rules as row indicators. See [ADR 0005](adr/0005-project-skill-ingestion.md).

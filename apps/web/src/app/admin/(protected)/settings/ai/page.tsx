@@ -10,7 +10,7 @@ export default async function AIPage() {
   ]);
   return (
     <>
-      <PageTitle eyebrow="SETTINGS" title="AI">
+      <PageTitle eyebrow="SETTINGS" title="AI Provider">
         Choose your models. Shape how your portfolio thinks.
       </PageTitle>
       <AISettings initial={settings} initialProviders={providers} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { IngestionStatus } from "../ingestion-status";
+import { RecordRow } from "./record-row";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -10,7 +10,7 @@ import {
   type Project,
   type ResumeDocument,
 } from "@/lib/content";
-import { DeleteButton, Empty, ListToolbar } from "./shared";
+import { Empty, ListToolbar } from "./shared";
 
 export function JobsList({ jobs }: { jobs: Job[] }) {
   const [query, setQuery] = useState("");
@@ -29,7 +29,13 @@ export function JobsList({ jobs }: { jobs: Job[] }) {
       />
       <div className="content-list">
         {filtered.map((job) => (
-          <div className="content-row" key={job.id}>
+          <RecordRow
+            key={job.id}
+            collection="jobs"
+            recordId={job.id}
+            label={job.title}
+            initial={job.ingestion}
+          >
             <Link className="record-link" href={`/admin/jobs/${job.id}`}>
               <strong>{job.title}</strong>
               <span>
@@ -44,13 +50,7 @@ export function JobsList({ jobs }: { jobs: Job[] }) {
                 {job.project_count === 1 ? "project" : "projects"}
               </small>
             </span>
-            <IngestionStatus
-              sourceType="jobs"
-              recordId={job.id}
-              initial={job.ingestion}
-            />
-            <DeleteButton path={`jobs/${job.id}`} label={job.title} />
-          </div>
+          </RecordRow>
         ))}
         {!filtered.length && (
           <Empty>
@@ -116,7 +116,13 @@ export function ProjectsList({
       </ListToolbar>
       <div className="content-list">
         {filtered.map((project) => (
-          <div className="content-row" key={project.id}>
+          <RecordRow
+            key={project.id}
+            collection="projects"
+            recordId={project.id}
+            label={project.name}
+            initial={project.ingestion}
+          >
             <Link
               className="record-link"
               href={`/admin/projects/${project.id}`}
@@ -140,16 +146,7 @@ export function ProjectsList({
               </span>
               <small>{period(project)}</small>
             </span>
-            <IngestionStatus
-              sourceType="projects"
-              recordId={project.id}
-              initial={project.ingestion}
-            />
-            <DeleteButton
-              path={`projects/${project.id}`}
-              label={project.name}
-            />
-          </div>
+          </RecordRow>
         ))}
         {!filtered.length && (
           <Empty>
@@ -178,7 +175,13 @@ export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
       />
       <div className="content-list">
         {filtered.map((doc) => (
-          <div className="content-row" key={doc.id}>
+          <RecordRow
+            key={doc.id}
+            collection="documents"
+            recordId={doc.id}
+            label={doc.title}
+            initial={doc.ingestion}
+          >
             <Link className="record-link" href={`/admin/documents/${doc.id}`}>
               <strong>{doc.title}</strong>
               <span>{doc.filename}</span>
@@ -187,20 +190,7 @@ export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
               {fileSize(doc.size)}
               <small>{doc.created_at.slice(0, 10)}</small>
             </span>
-            <a
-              className="text-button"
-              href={`/api/admin/documents/${doc.id}/file`}
-              download
-            >
-              Download
-            </a>
-            <IngestionStatus
-              sourceType="documents"
-              recordId={doc.id}
-              initial={doc.ingestion}
-            />
-            <DeleteButton path={`documents/${doc.id}`} label={doc.title} />
-          </div>
+          </RecordRow>
         ))}
         {!filtered.length && (
           <Empty>

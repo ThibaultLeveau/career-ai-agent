@@ -33,11 +33,12 @@ def claim(db):
     job = db.scalar(
         select(IngestionJob)
         .where(
+            IngestionJob.source_type.in_(MODELS),
             or_(
                 (IngestionJob.status.in_(("queued", "retrying")))
                 & (IngestionJob.available_at <= now()),
                 (IngestionJob.status == "running") & (IngestionJob.lease_until < now()),
-            )
+            ),
         )
         .order_by(IngestionJob.available_at, IngestionJob.id)
         .with_for_update(skip_locked=True)
@@ -70,6 +71,7 @@ def owned(db, job_id, owner):
     if (
         not source
         or not job
+        or job.source_type not in MODELS
         or job.status != "running"
         or job.owner != owner
         or job.lease_until <= now()
@@ -146,7 +148,7 @@ def process(job_id, owner):
         saved_key = db.get(ProviderKey, "openai")
         if not saved_key:
             raise IngestionError(
-                "Add an OpenAI API key in AI settings, then re-ingest."
+                "Add an OpenAI API key in AI Provider settings, then re-ingest."
             )
         try:
             key = cipher().decrypt(saved_key.encrypted_key.encode()).decode()

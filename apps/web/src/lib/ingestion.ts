@@ -1,4 +1,6 @@
-export const sourceTypes = ["jobs", "projects", "skills", "documents"] as const;
+export const sourceTypes = ["jobs", "projects", "documents"] as const;
+export const historySourceTypes = [...sourceTypes, "skills"] as const;
+export type HistorySourceType = (typeof historySourceTypes)[number];
 export type SourceType = (typeof sourceTypes)[number];
 export type IngestionSummary = {
   status: string;
@@ -10,7 +12,7 @@ export type IngestionSummary = {
 };
 export type IngestionJob = {
   id: number;
-  source_type: SourceType;
+  source_type: HistorySourceType;
   record_id: number;
   source_deleted: boolean;
   label: string;

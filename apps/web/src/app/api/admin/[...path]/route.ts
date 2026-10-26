@@ -3,7 +3,7 @@ import { apiUrl } from "@/lib/admin-server";
 
 export const dynamic = "force-dynamic";
 const allowedPath =
-  /^(login|logout|session|credentials|settings|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|skills|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
+  /^(login|logout|session|overview|credentials|settings|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
 
 async function proxy(
   request: NextRequest,

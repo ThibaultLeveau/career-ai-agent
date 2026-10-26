@@ -27,9 +27,14 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await expect(page.getByText("TypeScript", { exact: true })).toBeVisible();
   await page.getByLabel("New skill keyword").fill(" typescript ");
   await page.getByRole("button", { name: "Add skill", exact: true }).click();
-  await expect(page.getByRole("main").getByRole("alert")).toContainText("already exists");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "already exists",
+  );
   await page.getByLabel("New skill keyword").fill("");
-  await page.getByRole("button", { name: "Rename" }).click();
+  await page
+    .getByRole("button", { name: "Actions for TypeScript", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   await page.getByLabel("Skill keyword", { exact: true }).fill("TypeScript 6");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("TypeScript 6", { exact: true })).toBeVisible();
@@ -118,7 +123,10 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await page.getByLabel("Search projects").fill("");
   await page.screenshot({ path: "test-results/projects.png", fullPage: true });
   page.on("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Delete Search platform" }).click();
+  await page
+    .getByRole("button", { name: "Actions for Search platform" })
+    .click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await expect(
     page.getByText("No projects yet.", { exact: false }),
   ).toBeVisible();
@@ -126,9 +134,11 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await page.getByRole("button", { name: "Delete Software engineer" }).click();
   await expect(page).toHaveURL(/\/admin\/jobs$/);
   await page.getByRole("link", { name: "Skills", exact: true }).click();
-  await page.getByRole("button", { name: "Delete TypeScript 6" }).click();
+  await page.getByRole("button", { name: "Actions for TypeScript 6" }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await expect(page.getByText("TypeScript 6", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Delete PostgreSQL" }).click();
+  await page.getByRole("button", { name: "Actions for PostgreSQL" }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await expect(
     page.getByText("No skills yet.", { exact: false }),
   ).toBeVisible();
@@ -140,13 +150,11 @@ test("uploads, renames, replaces, downloads, and deletes PDFs", async ({
   await page.getByRole("link", { name: "Documents", exact: true }).click();
   await page.getByRole("link", { name: "Add document" }).click();
   await page.getByLabel("Title", { exact: true }).fill("English resume");
-  await page
-    .getByLabel("Resume PDF")
-    .setInputFiles({
-      name: "resume.pdf",
-      mimeType: "application/pdf",
-      buffer: pdf,
-    });
+  await page.getByLabel("Resume PDF").setInputFiles({
+    name: "resume.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf,
+  });
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/documents\/\d+$/);
   const id = page.url().split("/").pop();
@@ -196,13 +204,11 @@ test("uploads, renames, replaces, downloads, and deletes PDFs", async ({
     expect(oversized.status()).toBe(413);
   }
   const replacement = Buffer.concat([pdf, Buffer.from("\n% updated")]);
-  await page
-    .getByLabel("Replace PDF")
-    .setInputFiles({
-      name: "updated.pdf",
-      mimeType: "application/pdf",
-      buffer: replacement,
-    });
+  await page.getByLabel("Replace PDF").setInputFiles({
+    name: "updated.pdf",
+    mimeType: "application/pdf",
+    buffer: replacement,
+  });
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByText("updated.pdf", { exact: true })).toBeVisible();
   const downloaded = page.waitForEvent("download");

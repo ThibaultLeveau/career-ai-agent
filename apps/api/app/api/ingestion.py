@@ -5,17 +5,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from app.admin.security import Database, check_origin, require_admin
-from app.ingestion.models import Event, IngestionJob, Source
+from app.content.models import Skill
+from app.ingestion.models import ACTIVE, Event, IngestionJob
 from app.ingestion.service import (
     MODELS,
     bulk_enqueue,
     enqueue,
     fingerprint,
     settings,
-    summarize,
+    summaries,
 )
 
-SourceType = Literal["jobs", "projects", "skills", "documents"]
+SourceType = Literal["jobs", "projects", "documents"]
+HistorySourceType = Literal["jobs", "projects", "skills", "documents"]
 Status = Literal[
     "queued", "running", "retrying", "succeeded", "failed", "cancelled", "superseded"
 ]
@@ -28,7 +30,7 @@ router = APIRouter(
 
 class BulkInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    source_types: list[SourceType] = Field(min_length=1, max_length=4)
+    source_types: list[SourceType] = Field(min_length=1, max_length=3)
 
 
 def output(job):
@@ -58,24 +60,34 @@ def output(job):
 
 @router.get("/ingestion/status")
 def statuses(db: Database, source_type: SourceType):
+    return summaries(db, source_type)
+
+
+@router.get("/overview")
+def overview(db: Database):
     current = fingerprint(settings(db).model_dump())
-    sources = {
-        source.record_id: source
-        for source in db.scalars(
-            select(Source).where(Source.source_type == source_type)
-        )
+    counts = {"skills": db.scalar(select(func.count()).select_from(Skill))}
+    ingestion = {"pending": 0, "ongoing": 0, "failed": 0, "successful": 0}
+    groups = {
+        "running": "ongoing",
+        "retrying": "ongoing",
+        "failed": "failed",
+        "succeeded": "successful",
     }
-    model = MODELS[source_type]
-    return {
-        str(record_id): summarize(db, sources.get(record_id), current)
-        for record_id in db.scalars(select(model.id))
-    }
+    active = False
+    for source_type in MODELS:
+        items = summaries(db, source_type, current)
+        counts[source_type] = len(items)
+        for item in items.values():
+            active = active or item["status"] in ACTIVE
+            ingestion[groups.get(item["status"], "pending")] += 1
+    return {"counts": counts, "ingestion": ingestion, "active": active}
 
 
 @router.get("/ingestion/jobs")
 def jobs(
     db: Database,
-    source_type: SourceType | None = None,
+    source_type: HistorySourceType | None = None,
     status: Status | None = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,

@@ -10,11 +10,11 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from sqlalchemy import func, select
 
-from app.content.models import Skill
+from app.content.models import Job, Project, Skill
 from app.ingestion import worker
 from app.ingestion.models import Chunk, IngestionJob, Source
 from app.ingestion.provider import embed, retry_delay
-from app.ingestion.service import enqueue, now
+from app.ingestion.service import enqueue, now, source_text
 from app.ingestion.text import IngestionError, chunk_text, extract_pdf, tokenizer
 
 database = pytest.mark.skipif(
@@ -189,22 +189,22 @@ def test_async_save_atomic_publish_and_stale_settings(pipeline, db):
 @database
 def test_manual_bulk_exclusion_and_history_on_delete(pipeline, db):
     client = pipeline
-    skill = client.post("/admin/skills", json={"keyword": "Python"}).json()
-    path = f"/admin/ingestion/skills/{skill['id']}/reingest"
+    item = client.post("/admin/projects", json={"name": "Python"}).json()
+    path = f"/admin/ingestion/projects/{item['id']}/reingest"
     conflict = client.post(path)
     assert (
         conflict.status_code == 409
-        and f"#{skill['ingestion']['job_id']}" in conflict.text
+        and f"#{item['ingestion']['job_id']}" in conflict.text
     )
     result = client.post(
-        "/admin/ingestion/reingest", json={"source_types": ["skills", "skills"]}
+        "/admin/ingestion/reingest", json={"source_types": ["projects", "projects"]}
     )
     assert result.status_code == 202 and result.json()["skipped"] == 1
     job = process_next(db)
     assert client.post(path).status_code == 202
-    client.delete(f"/admin/skills/{skill['id']}")
+    client.delete(f"/admin/projects/{item['id']}")
     assert db.scalar(select(func.count()).select_from(Chunk)) == 0
-    history = client.get("/admin/ingestion/jobs?source_type=skills&limit=1").json()
+    history = client.get("/admin/ingestion/jobs?source_type=projects&limit=1").json()
     assert history["total"] == 2
     assert history["items"][0]["status"] == "cancelled"
     assert history["items"][0]["source_deleted"]
@@ -220,10 +220,9 @@ def test_edit_coalescing_and_related_project_changes(pipeline, db):
         "/admin/projects", json={"name": "Search", "skill_ids": [skill["id"]]}
     ).json()
     client.put(f"/admin/skills/{skill['id']}", json={"keyword": "Python 3"})
-    assert db.scalar(select(func.count()).select_from(IngestionJob)) == 2
+    assert "ingestion" not in skill
+    assert db.scalar(select(func.count()).select_from(IngestionJob)) == 1
     assert process_next(db).status == "superseded"
-    assert process_next(db).status == "superseded"
-    assert process_next(db).status == "succeeded"
     latest = process_next(db)
     assert latest.status == "succeeded" and "Python 3" in latest.plain_text
     client.delete(f"/admin/skills/{skill['id']}")
@@ -270,7 +269,7 @@ def test_retries_checkpoint_and_previous_embeddings_survive(pipeline, db, monkey
 
 @database
 def test_worker_recovery_fences_old_owner(pipeline, db):
-    pipeline.post("/admin/skills", json={"keyword": "PostgreSQL"})
+    pipeline.post("/admin/projects", json={"name": "PostgreSQL"})
     first = worker.claim(db)
     assert worker.claim(db) is None
     job = db.get(IngestionJob, first[0])
@@ -287,15 +286,15 @@ def test_worker_recovery_fences_old_owner(pipeline, db):
 
 @database
 def test_content_change_during_provider_call_cannot_publish(pipeline, db, monkeypatch):
-    skill = Skill(keyword="Before")
-    db.add(skill)
-    enqueue(db, "skills", skill)
+    project = Project(name="Before")
+    db.add(project)
+    enqueue(db, "projects", project)
     db.commit()
     claimed = worker.claim(db)
 
     def change(texts, config, key):
-        skill.keyword = "After"
-        enqueue(db, "skills", skill)
+        project.name = "After"
+        enqueue(db, "projects", project)
         db.commit()
         return [[0.1] * 3 for _ in texts]
 
@@ -309,6 +308,7 @@ def test_content_change_during_provider_call_cannot_publish(pipeline, db, monkey
 
 @database
 def test_ingestion_authentication_and_origin(client):
+    assert client.get("/admin/overview").status_code == 401
     assert client.get("/admin/ingestion/jobs").status_code == 401
     assert client.get("/admin/ingestion/status?source_type=jobs").status_code == 401
     client.post(
@@ -368,15 +368,17 @@ def test_concurrent_enqueue_and_claim_use_database_exclusion():
 
     engine = get_engine()
     with Session(engine) as db:
-        skill = Skill(keyword=f"concurrency-{uuid4()}")
-        db.add(skill)
+        project = Project(name=f"concurrency-{uuid4()}")
+        db.add(project)
         db.commit()
-        record_id = skill.id
+        record_id = project.id
     try:
 
         def submit(_):
             with Session(engine) as db:
-                _, created = enqueue(db, "skills", db.get(Skill, record_id), force=True)
+                _, created = enqueue(
+                    db, "projects", db.get(Project, record_id), force=True
+                )
                 db.commit()
                 return created
 
@@ -392,16 +394,16 @@ def test_concurrent_enqueue_and_claim_use_database_exclusion():
         with Session(engine) as db:
             db.execute(
                 delete(IngestionJob).where(
-                    IngestionJob.source_type == "skills",
+                    IngestionJob.source_type == "projects",
                     IngestionJob.record_id == record_id,
                 )
             )
             db.execute(
                 delete(Source).where(
-                    Source.source_type == "skills", Source.record_id == record_id
+                    Source.source_type == "projects", Source.record_id == record_id
                 )
             )
-            db.execute(delete(Skill).where(Skill.id == record_id))
+            db.execute(delete(Project).where(Project.id == record_id))
             db.commit()
 
 
@@ -442,3 +444,201 @@ def test_retry_resumes_after_completed_batch(pipeline, db, monkeypatch):
     assert job.status == "succeeded"
     assert calls[2] == calls[1]
     assert len(calls) == 3
+
+
+@database
+def test_skills_are_keywords_only_and_rejected_by_enqueue(pipeline, db):
+    skill = pipeline.post("/admin/skills", json={"keyword": "Python"}).json()
+    assert "ingestion" not in skill
+    assert pipeline.get("/admin/skills").json() == [skill]
+    assert db.scalar(select(func.count()).select_from(IngestionJob)) == 0
+    assert db.scalar(select(func.count()).select_from(Source)) == 0
+    assert (
+        pipeline.post(f"/admin/ingestion/skills/{skill['id']}/reingest").status_code
+        == 422
+    )
+    assert (
+        pipeline.post(
+            "/admin/ingestion/reingest", json={"source_types": ["skills"]}
+        ).status_code
+        == 422
+    )
+    assert pipeline.get("/admin/ingestion/status?source_type=skills").status_code == 422
+    with pytest.raises(ValueError, match="disabled"):
+        enqueue(db, "skills", db.get(Skill, skill["id"]))
+
+
+@database
+def test_complete_documents_are_combined_before_chunking(pipeline, db):
+    client = pipeline
+    job_fields = {
+        "title": "Engineer",
+        "company": "Acme",
+        "location": "Paris",
+        "start_month": "2024-01",
+        "end_month": "2025-06",
+        "summary": "Summary marker",
+        "responsibilities": "Responsibility marker",
+        "achievements": "Achievement marker",
+    }
+    job = client.post("/admin/jobs", json=job_fields).json()
+    skill = client.post("/admin/skills", json={"keyword": "Python"}).json()
+    other = client.post("/admin/skills", json={"keyword": "Aardvark"}).json()
+    project_fields = {
+        "name": "Search",
+        "role": "Lead",
+        "start_month": "2025-07",
+        "ongoing": True,
+        "summary": "Overview marker",
+        "description": "Description marker",
+        "outcomes": "Outcomes marker",
+        "website_url": "https://example.com",
+        "repository_url": "https://example.com/repo",
+        "job_id": job["id"],
+        "skill_ids": [skill["id"], other["id"]],
+    }
+    project = client.post("/admin/projects", json=project_fields).json()
+    assert all("ingestion" not in keyword for keyword in project["skills"])
+    job_run, project_run = process_next(db), process_next(db)
+    assert all(value in job_run.plain_text for value in job_fields.values())
+    assert all(
+        value in project_run.plain_text
+        for value in project_fields.values()
+        if isinstance(value, str)
+    )
+    assert "Skills: Aardvark, Python" in project_run.plain_text
+    assert "Job: Engineer at Acme" in project_run.plain_text
+    assert (
+        "Kind: professional" in project_run.plain_text
+        and "End: Present" in project_run.plain_text
+    )
+    record = db.get(Project, project["id"])
+    record.summary = " word" * 80
+    record.description = " description" * 80
+    plain, chunks = chunk_text([(None, source_text(record))], 100, 20)
+    assert (
+        plain.index("Summary:") < plain.index("Description:") < plain.index("Skills:")
+    )
+    assert any(
+        " word" in chunk.text and "Description:" in chunk.text for chunk in chunks
+    )
+    assert (
+        tokenizer().encode(chunks[0].text)[-20:]
+        == tokenizer().encode(chunks[1].text)[:20]
+    )
+    client.put(
+        f"/admin/jobs/{job['id']}", json={**job_fields, "title": "Principal engineer"}
+    )
+    assert process_next(db).status == "succeeded"
+    assert "Job: Principal engineer at Acme" in process_next(db).plain_text
+
+
+@database
+def test_overview_counts_current_items_and_stale_settings(pipeline, db):
+    client = pipeline
+    client.post("/admin/skills", json={"keyword": "Python"})
+    item = client.post(
+        "/admin/jobs", json={"title": "Engineer", "company": "Acme"}
+    ).json()
+
+    def counts():
+        return client.get("/admin/overview").json()
+
+    assert counts() == {
+        "active": True,
+        "counts": {"jobs": 1, "projects": 0, "skills": 1, "documents": 0},
+        "ingestion": {"pending": 1, "ongoing": 0, "failed": 0, "successful": 0},
+    }
+    claimed = worker.claim(db)
+    assert counts()["ingestion"]["ongoing"] == 1
+    worker.failure(*claimed, IngestionError("Temporary", True))
+    assert counts()["ingestion"]["ongoing"] == 1
+    run = db.get(IngestionJob, claimed[0])
+    run.available_at = now() - timedelta(seconds=1)
+    db.commit()
+    assert process_next(db).status == "succeeded"
+    assert counts()["ingestion"]["successful"] == 1
+    client.post(f"/admin/ingestion/jobs/{item['id']}/reingest")
+    claimed = worker.claim(db)
+    worker.failure(*claimed, IngestionError("Permanent"))
+    assert counts()["ingestion"]["failed"] == 1
+    client.post(f"/admin/ingestion/jobs/{item['id']}/reingest")
+    process_next(db)
+    assert counts()["ingestion"]["successful"] == 1
+    config = client.get("/admin/settings").json()["ingestion"]
+    config["chunk_overlap"] = 80
+    client.patch("/admin/settings", json={"ingestion": config})
+    assert counts()["ingestion"]["pending"] == 1
+    client.delete(f"/admin/jobs/{item['id']}")
+    assert sum(counts()["ingestion"].values()) == 0
+    assert client.get("/admin/ingestion/jobs").json()["total"] == 3
+    db.add(Job(title="Never queued", company="Acme"))
+    db.commit()
+    assert counts()["ingestion"]["pending"] == 1
+
+
+@database
+def test_retirement_migration_preserves_skills_and_history(pipeline, db):
+    import importlib.util
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    from app.ingestion.models import Event
+    from app.ingestion.service import fingerprint, settings
+
+    skill = Skill(keyword="Legacy")
+    db.add(skill)
+    db.flush()
+    project = Project(name="Uses legacy skill", skills=[skill])
+    db.add(project)
+    source = Source(
+        source_type="skills", record_id=skill.id, revision=1, content_hash="a" * 64
+    )
+    db.add(source)
+    db.flush()
+    config = settings(db).model_dump()
+    run = IngestionJob(
+        source_id=source.id,
+        source_type="skills",
+        record_id=skill.id,
+        label=skill.keyword,
+        revision=1,
+        trigger="save",
+        status="running",
+        stage="embedding",
+        settings=config,
+        fingerprint=fingerprint(config),
+        plain_text="Legacy",
+        created_at=now(),
+        available_at=now(),
+        owner="old-worker",
+        lease_until=now() + timedelta(seconds=120),
+    )
+    db.add(run)
+    db.flush()
+    source.active_job_id = run.id
+    db.add(
+        Chunk(
+            job_id=run.id, position=0, text="Legacy", token_count=1, embedding=[0.1] * 3
+        )
+    )
+    db.commit()
+    spec = importlib.util.spec_from_file_location(
+        "retire", "migrations/versions/0005_retire_skill_ingestion.py"
+    )
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    with Operations.context(MigrationContext.configure(db.connection())):
+        migration.upgrade()
+    db.expire_all()
+    assert db.get(Skill, skill.id).keyword == "Legacy"
+    assert db.get(Project, project.id).skills[0].id == skill.id
+    assert run.status == "cancelled" and run.owner is None and run.plain_text is None
+    assert source.active_job_id is None
+    assert db.scalar(select(func.count()).select_from(Chunk)) == 0
+    assert db.scalar(select(Event).where(Event.job_id == run.id))
+    history = pipeline.get("/admin/ingestion/jobs?source_type=skills").json()
+    assert history["total"] == 1 and not history["items"][0]["source_deleted"]
+    assert worker.claim(db) is None
+    assert pipeline.get("/admin/overview").json()["ingestion"]["pending"] == 1

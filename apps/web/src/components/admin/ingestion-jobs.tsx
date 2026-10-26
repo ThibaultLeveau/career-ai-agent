@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { adminRequest } from "@/lib/admin";
 import {
   activeStatus,
   sourceTypes,
+  historySourceTypes,
   statusLabels,
   type IngestionJob,
   type SourceType,
 } from "@/lib/ingestion";
-import { StatusIcon } from "./ingestion-status";
+import { StatusTooltip } from "./ingestion-status";
 import { Notice } from "./ui";
 
 type JobList = { items: IngestionJob[]; total: number };
@@ -74,7 +75,7 @@ function JobLogs({ jobId }: { jobId: number }) {
   );
 }
 
-function JobCard({
+function JobRow({
   job,
   expanded,
   toggle,
@@ -83,89 +84,117 @@ function JobCard({
   expanded: boolean;
   toggle: () => void;
 }) {
+  const type =
+    job.source_type === "skills"
+      ? "Skills (legacy)"
+      : job.source_type[0].toUpperCase() + job.source_type.slice(1);
   return (
-    <article className="ingestion-job">
-      <div className="ingestion-job-heading">
-        <div>
+    <Fragment>
+      <tr className={expanded ? "expanded" : undefined}>
+        <td className="ingestion-source">
+          {job.source_deleted ? (
+            <span>{job.label}</span>
+          ) : (
+            <Link
+              href={
+                job.source_type === "skills"
+                  ? "/admin/skills"
+                  : `/admin/${job.source_type}/${job.record_id}`
+              }
+              title={job.label}
+            >
+              {job.label}
+            </Link>
+          )}
           <small>
-            #{job.id} · {job.source_type} · {job.trigger.replaceAll("_", " ")}
+            #{job.id} · {type}
+            {job.source_deleted ? " · Deleted" : ""}
           </small>
-          <h2>
-            {job.source_deleted ? (
-              job.label
-            ) : (
-              <Link
-                href={
-                  job.source_type === "skills"
-                    ? "/admin/skills"
-                    : `/admin/${job.source_type}/${job.record_id}`
-                }
-              >
-                {job.label}
-              </Link>
-            )}
-          </h2>
-          {job.source_deleted && <small>Source deleted</small>}
-        </div>
-        <span className={`ingestion-state ingestion-${job.status}`}>
-          <StatusIcon status={job.status} />
-          {statusLabels[job.status]}
-        </span>
-      </div>
-      <div className="ingestion-job-meta">
-        <span>
-          {job.completed_chunks}/{job.total_chunks} chunks
-        </span>
-        <span>
-          Retries: {job.retries}/{job.settings.ingestion.max_retries}
-        </span>
-        <span>Stage: {job.stage}</span>
-        <span>Created: {time(job.created_at)}</span>
-      </div>
-      {activeStatus(job.status) && job.total_chunks > 0 && (
-        <progress
-          value={job.completed_chunks}
-          max={job.total_chunks}
-          aria-label="Embedding progress"
-        />
-      )}
-      {job.error && <p className="ingestion-error">{job.error}</p>}
-      <button
-        type="button"
-        className="text-button"
-        aria-expanded={expanded}
-        onClick={toggle}
-      >
-        {expanded ? "Hide logs" : "View logs"}
-      </button>
+        </td>
+        <td>
+          <StatusTooltip status={job.status} error={job.error} />
+        </td>
+        <td>
+          <span>
+            {job.completed_chunks}/{job.total_chunks} chunks
+          </span>
+          <small>{job.stage}</small>
+          {activeStatus(job.status) && job.total_chunks > 0 && (
+            <progress
+              value={job.completed_chunks}
+              max={job.total_chunks}
+              aria-label="Embedding progress"
+            />
+          )}
+        </td>
+        <td>
+          {job.retries}/{job.settings.ingestion.max_retries}
+        </td>
+        <td>{job.trigger.replaceAll("_", " ")}</td>
+        <td>
+          <time dateTime={job.created_at}>{time(job.created_at)}</time>
+        </td>
+        <td>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`${expanded ? "Hide" : "View"} logs for ingestion ${job.id}`}
+            aria-expanded={expanded}
+            aria-controls={`ingestion-detail-${job.id}`}
+            onClick={toggle}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+              style={{ transform: expanded ? "rotate(180deg)" : undefined }}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        </td>
+      </tr>
       {expanded && (
-        <>
-          <dl className="ingestion-details">
-            <dt>Model</dt>
-            <dd>
-              {job.settings.embeddings.model} ·{" "}
-              {job.settings.embeddings.dimensions} dimensions
-            </dd>
-            <dt>Chunking</dt>
-            <dd>
-              {job.settings.ingestion.chunk_size} tokens ·{" "}
-              {job.settings.ingestion.chunk_overlap} overlap
-            </dd>
-            <dt>Started</dt>
-            <dd>{time(job.started_at)}</dd>
-            <dt>Finished</dt>
-            <dd>{time(job.finished_at)}</dd>
-            {job.status === "retrying" && (
-              <>
-                <dt>Next attempt</dt>
-                <dd>{time(job.available_at)}</dd>
-              </>
+        <tr className="ingestion-expanded">
+          <td colSpan={7} id={`ingestion-detail-${job.id}`}>
+            {job.error && <p className="ingestion-error">{job.error}</p>}
+            {job.source_type === "skills" && (
+              <p className="field-hint">
+                Standalone skill ingestion is retired. Skill keywords are
+                included in project documents.
+              </p>
             )}
-          </dl>
-          <JobLogs key={job.id} jobId={job.id} />
-        </>
+            <dl className="ingestion-details">
+              <dt>Model</dt>
+              <dd>
+                {job.settings.embeddings.model} ·{" "}
+                {job.settings.embeddings.dimensions} dimensions
+              </dd>
+              <dt>Chunking</dt>
+              <dd>
+                {job.settings.ingestion.chunk_size} tokens ·{" "}
+                {job.settings.ingestion.chunk_overlap} overlap
+              </dd>
+              <dt>Started</dt>
+              <dd>{time(job.started_at)}</dd>
+              <dt>Finished</dt>
+              <dd>{time(job.finished_at)}</dd>
+              {job.status === "retrying" && (
+                <>
+                  <dt>Next attempt</dt>
+                  <dd>{time(job.available_at)}</dd>
+                </>
+              )}
+            </dl>
+            <JobLogs key={job.id} jobId={job.id} />
+          </td>
+        </tr>
       )}
-    </article>
+    </Fragment>
   );
 }
 
@@ -270,9 +299,11 @@ export function IngestionJobs({ initialJobId }: { initialJobId?: number }) {
             }}
           >
             <option value="">All types</option>
-            {sourceTypes.map((type) => (
+            {historySourceTypes.map((type) => (
               <option key={type} value={type}>
-                {type[0].toUpperCase() + type.slice(1)}
+                {type === "skills"
+                  ? "Skills (legacy)"
+                  : type[0].toUpperCase() + type.slice(1)}
               </option>
             ))}
           </select>
@@ -314,26 +345,51 @@ export function IngestionJobs({ initialJobId }: { initialJobId?: number }) {
       </div>
       <Notice error>{error}</Notice>
       <Notice>{message}</Notice>
-      {selectedJob && !data.items.some((job) => job.id === selectedJob.id) && (
-        <JobCard
-          job={selectedJob}
-          expanded={expanded === selectedJob.id}
-          toggle={() =>
-            setExpanded(
-              expanded === selectedJob.id ? undefined : selectedJob.id,
-            )
-          }
-        />
-      )}
-      <div className="ingestion-job-list">
-        {data.items.map((job) => (
-          <JobCard
-            key={job.id}
-            job={job}
-            expanded={expanded === job.id}
-            toggle={() => setExpanded(expanded === job.id ? undefined : job.id)}
-          />
-        ))}
+      <div
+        className="ingestion-table-scroll"
+        role="region"
+        aria-label="Ingestion job history"
+        tabIndex={0}
+      >
+        <table className="ingestion-table">
+          <thead>
+            <tr>
+              <th scope="col">Source</th>
+              <th scope="col">Status</th>
+              <th scope="col">Progress</th>
+              <th scope="col">Retries</th>
+              <th scope="col">Trigger</th>
+              <th scope="col">Created</th>
+              <th scope="col">
+                <span className="sr-only">Logs</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {selectedJob &&
+              !data.items.some((job) => job.id === selectedJob.id) && (
+                <JobRow
+                  job={selectedJob}
+                  expanded={expanded === selectedJob.id}
+                  toggle={() =>
+                    setExpanded(
+                      expanded === selectedJob.id ? undefined : selectedJob.id,
+                    )
+                  }
+                />
+              )}
+            {data.items.map((job) => (
+              <JobRow
+                key={job.id}
+                job={job}
+                expanded={expanded === job.id}
+                toggle={() =>
+                  setExpanded(expanded === job.id ? undefined : job.id)
+                }
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
       {!data.items.length && (
         <div className="content-empty">

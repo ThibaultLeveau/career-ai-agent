@@ -29,6 +29,9 @@ class RecordOutput(BaseModel):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class IngestibleOutput(RecordOutput):
     ingestion: dict
 
 
@@ -55,7 +58,7 @@ class JobInput(TimelineInput):
     achievements: Text = ""
 
 
-class JobOutput(JobInput, RecordOutput):
+class JobOutput(JobInput, IngestibleOutput):
     project_count: int
 
 
@@ -89,7 +92,7 @@ class ProjectInput(TimelineInput):
         return value
 
 
-class ProjectOutput(RecordOutput):
+class ProjectOutput(IngestibleOutput):
     name: str
     role: str
     start_month: str | None
@@ -109,7 +112,7 @@ class DocumentInput(Input):
     title: Name
 
 
-class DocumentOutput(RecordOutput):
+class DocumentOutput(IngestibleOutput):
     title: str
     filename: str
     size: int

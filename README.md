@@ -25,7 +25,7 @@ Open [administration](http://localhost:3000/admin) and sign in with the initial 
 
 `APP_ORIGIN` must match the exact browser origin, including the port (default `http://localhost:3000`). For HTTPS deployment, set it to the public HTTPS origin; session cookies then require HTTPS. Keep `SETTINGS_ENCRYPTION_KEY` stable and backed up with the database: replacing it prevents decryption of existing provider keys. Neither provider keys nor this encryption key belong in frontend environment variables.
 
-In **Settings → AI**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Use **Settings → RAG** for retrieval counts and ingestion chunk size, overlap, and retry count. Retrieval counts configure the future retrieval service.
+In **Settings → AI Provider**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Use **Settings → RAG** for retrieval counts and ingestion chunk size, overlap, and retry count. Retrieval counts configure the future retrieval service.
 
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
 
@@ -33,19 +33,25 @@ The example credentials are for local development. Set database credentials and 
 
 Use **Jobs**, **Projects**, **Skills**, and **Documents** in the admin sidebar to create, edit, search, and delete career content. Jobs and projects support month/year dates and structured plain-text descriptions. A project linked to a job is professional; otherwise it is personal. Projects can reference multiple skills. Jobs with linked projects cannot be deleted until those projects are reassigned, unlinked, or deleted. Deleting a skill removes its associations and keeps the projects.
 
-Documents accept multiple independent resume PDFs, up to 10 MiB each. Rename, replace, download, or delete them in the private admin workspace. File bytes are stored in PostgreSQL and included in its backups; replacement is atomic. Only authenticated administrators can download files. Saving new or changed content atomically queues background ingestion; provider calls happen in the worker. PDFs require selectable text; OCR and encrypted PDFs are not supported.
+Documents accept multiple independent resume PDFs, up to 10 MiB each. Rename, replace, download, or delete them in the private admin workspace. File bytes are stored in PostgreSQL and included in its backups; replacement is atomic. Only authenticated administrators can download files. Saving new or changed jobs, projects, or documents atomically queues background ingestion; provider calls happen in the worker. PDFs require selectable text; OCR and encrypted PDFs are not supported.
 
-Existing installations must run the migration service (`docker compose run --rm migrate`) using the rebuilt API image before starting the updated application. Migration 0004 adds ingestion storage and moves existing chunking values into ingestion settings without changing provider keys or models. Back up an existing database before migrating.
+Existing installations must run the migration service (`docker compose run --rm migrate`) using the rebuilt API image before starting the updated application. Migration 0004 adds ingestion storage and moves existing chunking values into ingestion settings without changing provider keys or models. Migration 0005 retires standalone skill ingestion: it cancels unfinished skill jobs and removes their derived text/vectors while preserving skills, relationships, history, and logs. Stop the API and worker during this migration, then start the rebuilt services. Back up an existing database before migrating.
 
 ## Ingestion
 
-Every content list and editor shows ingestion status and a **Re-ingest** control, disabled while a job is active. **Ingestion Jobs** shows paginated history, progress, retry schedules, and sanitized logs. **Re-ingest all** lets you select jobs, projects, skills, and documents; already-active items are skipped.
+Jobs, projects, and documents show a status icon with a hover/focus tooltip; click it to open ingestion details. Row actions live in the three-dot menu, also available by right-click or Shift+F10. The menu offers **Edit**, **Re-ingest**, and **Delete**, plus **Download** for documents. Re-ingestion is disabled while active. Skills offer Edit and Delete only.
+
+**Home** shows content counts and a funnel of current item states, counting each job, project, and document once. Pending includes never-ingested, queued, outdated, cancelled, or superseded items; ongoing includes processing and retrying. Successful means current content and settings match the completed ingestion. Skills count as content, but not as separate ingestion sources. The authenticated `/admin/overview` endpoint supplies counts, state totals, and whether work is active.
+
+**Ingestion Jobs** shows a dense, paginated table with expandable details and sanitized logs. Historical skill runs remain visible as **Skills (legacy)**. **Re-ingest all** lets you select jobs, projects, and documents; already-active items are skipped. Status polling runs every two seconds during active work and every ten seconds while idle, pausing in hidden tabs without replacing editor drafts.
+
+Each job's structured fields form one source document. Each project combines its fields, linked job title/company, and sorted skill keywords into one document. These complete documents are then split into overlapping chunks and embedded; fields are not embedded independently. Standalone skill keywords are never embedded.
 
 The worker uses a durable PostgreSQL queue, resumes completed embedding batches after interruption, and atomically publishes complete results. Content edits during processing schedule the latest revision; linked job/skill metadata changes refresh affected projects. Failed rebuilds preserve the previous completed embeddings. Deleting content removes its derived text/vectors while keeping operational history.
 
 Chunk sizes and overlap are measured in tokens (defaults 800/100). Transient errors have three additional retries by default, with exponential backoff and provider retry delays. Authentication, billing, invalid settings, and document errors require correction and manual re-ingestion. Embedding-model/dimension and chunking changes mark items out of date without making provider requests; use the re-ingest controls to rebuild them. Retry and retrieval settings do not invalidate embeddings.
 
-To backfill all existing records through the same queue (safe to repeat while jobs are active):
+To backfill all existing jobs, projects, and documents through the same queue (safe to repeat while jobs are active):
 
 ```sh
 docker compose exec -T api python -m app.ingestion enqueue --all --reason backfill
@@ -112,7 +118,7 @@ The frontend production build runs as part of its runtime image build. To check 
 
 ## Database and migrations
 
-The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings; the third adds career content and PDF storage; the fourth adds ingestion jobs, logs, text, chunks, and vectors. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
+The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings; the third adds career content and PDF storage; the fourth adds ingestion jobs, logs, text, chunks, and vectors; the fifth retires standalone skill embeddings. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
 
 ```sh
 docker compose exec api alembic current

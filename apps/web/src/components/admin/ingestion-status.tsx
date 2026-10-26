@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
+import { ActionMenu } from "./action-menu";
+import { Notice } from "./ui";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useId,
+  useRef,
   useState,
 } from "react";
 import { adminRequest } from "@/lib/admin";
@@ -118,18 +123,18 @@ export function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function IngestionStatus({
+export function useIngestion({
   sourceType,
   recordId,
   initial,
 }: {
-  sourceType: SourceType;
+  sourceType?: SourceType;
   recordId: number;
   initial?: IngestionSummary;
 }) {
   const { statuses, refresh, error: statusError } = useContext(Context);
   const [submitted, setSubmitted] = useState<IngestionSummary>();
-  const polled = statuses[sourceType]?.[recordId];
+  const polled = sourceType ? statuses[sourceType]?.[recordId] : undefined;
   const current =
     (initial?.job_id ?? 0) > (polled?.job_id ?? 0)
       ? initial
@@ -140,6 +145,7 @@ export function IngestionStatus({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function reingest() {
+    if (!sourceType) return;
     setBusy(true);
     setError("");
     try {
@@ -162,34 +168,106 @@ export function IngestionStatus({
       setBusy(false);
     }
   }
+  return { value, status, busy, error, statusError, reingest };
+}
+
+export function StatusTooltip({
+  status,
+  error,
+  href,
+}: {
+  status: string;
+  error?: string | null;
+  href?: string;
+}) {
+  const id = useId();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  const label = `${statusLabels[status] ?? status}${error ? `: ${error}` : ""}`;
+  function show() {
+    const rect = anchor.current!.getBoundingClientRect();
+    setPoint({
+      x: Math.max(8, Math.min(rect.right - 240, innerWidth - 248)),
+      y: rect.bottom + 6,
+    });
+  }
   return (
-    <div className="ingestion-control">
-      <Link
-        className={`ingestion-state ingestion-${status}`}
+    <span
+      ref={anchor}
+      className="status-tooltip-anchor"
+      onMouseEnter={show}
+      onMouseLeave={() => setPoint(null)}
+      onFocus={show}
+      onBlur={() => setPoint(null)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setPoint(null);
+      }}
+    >
+      {href ? (
+        <Link
+          className={`status-icon ingestion-${status}`}
+          href={href}
+          aria-label={label}
+          aria-describedby={point ? id : undefined}
+        >
+          <StatusIcon status={status} />
+        </Link>
+      ) : (
+        <span
+          className={`status-icon ingestion-${status}`}
+          tabIndex={0}
+          role="img"
+          aria-label={label}
+          aria-describedby={point ? id : undefined}
+        >
+          <StatusIcon status={status} />
+        </span>
+      )}
+      {point &&
+        createPortal(
+          <span
+            id={id}
+            role="tooltip"
+            className="ingestion-tooltip"
+            style={{ left: point.x, top: point.y }}
+          >
+            {label}
+          </span>,
+          document.querySelector(".admin") ?? document.body,
+        )}
+    </span>
+  );
+}
+
+export function IngestionStatus(props: {
+  sourceType: SourceType;
+  recordId: number;
+  initial?: IngestionSummary;
+}) {
+  const { value, status, busy, error, statusError, reingest } =
+    useIngestion(props);
+  return (
+    <div className="editor-ingestion">
+      <StatusTooltip
+        status={status}
+        error={value?.error || statusError}
         href={
           value?.job_id
             ? `/admin/ingestion?job=${value.job_id}`
             : "/admin/ingestion"
         }
-        title={value?.error ?? statusError ?? undefined}
-      >
-        <StatusIcon status={status} />
-        <span>{statusLabels[status] ?? status}</span>
-      </Link>
-      <button
-        type="button"
-        className="text-button"
-        disabled={busy || activeStatus(status)}
-        onClick={reingest}
-        aria-label={`Re-ingest ${sourceType} item ${recordId}`}
-      >
-        {busy ? "Queuing…" : "Re-ingest"}
-      </button>
-      {(error || value?.error || statusError) && (
-        <small className="ingestion-error">
-          {error || value?.error || statusError}
-        </small>
-      )}
+      />
+      <ActionMenu
+        label="ingestion"
+        actions={[
+          {
+            label: "Re-ingest",
+            onSelect: reingest,
+            disabled: busy || activeStatus(status),
+          },
+        ]}
+      />
+      <Notice error>{error}</Notice>
     </div>
   );
 }

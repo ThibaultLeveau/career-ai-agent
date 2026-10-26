@@ -1,12 +1,12 @@
 "use client";
 
-import { IngestionStatus } from "../ingestion-status";
+import { RecordRow } from "./record-row";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { adminRequest } from "@/lib/admin";
 import type { Skill } from "@/lib/content";
 import { Notice, useUnsavedChanges } from "../ui";
-import { DeleteButton, Empty, ListToolbar } from "./shared";
+import { Empty, ListToolbar } from "./shared";
 
 function SkillRow({ skill }: { skill: Skill }) {
   const router = useRouter();
@@ -31,7 +31,17 @@ function SkillRow({ skill }: { skill: Skill }) {
   }
   return (
     <div className="skill-row">
-      <div className="content-row">
+      <RecordRow
+        collection="skills"
+        recordId={skill.id}
+        label={skill.keyword}
+        editing={editing}
+        onEdit={() => {
+          setKeyword(skill.keyword);
+          setEditing(true);
+        }}
+        deleteMessage={`Delete “${skill.keyword}”? It will be removed from all projects. Projects will be kept.`}
+      >
         {editing ? (
           <form onSubmit={rename} className="inline-form">
             <input
@@ -65,30 +75,9 @@ function SkillRow({ skill }: { skill: Skill }) {
         ) : (
           <>
             <strong className="record-link">{skill.keyword}</strong>
-            <button
-              className="text-button"
-              onClick={() => {
-                setKeyword(skill.keyword);
-                setEditing(true);
-              }}
-            >
-              Rename
-            </button>
           </>
         )}
-        <IngestionStatus
-          sourceType="skills"
-          recordId={skill.id}
-          initial={skill.ingestion}
-        />
-        {!editing && (
-          <DeleteButton
-            path={`skills/${skill.id}`}
-            label={skill.keyword}
-            message={`Delete “${skill.keyword}”? It will be removed from all projects. Projects will be kept.`}
-          />
-        )}
-      </div>
+      </RecordRow>
       <Notice error>{error}</Notice>
     </div>
   );

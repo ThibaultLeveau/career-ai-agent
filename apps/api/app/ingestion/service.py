@@ -3,7 +3,7 @@ import json
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.orm import Session
 
 from app.admin.models import RagConfiguration
@@ -11,7 +11,7 @@ from app.admin.schemas import RagSettings
 from app.content.models import Document, Job, Project, Skill
 from app.ingestion.models import ACTIVE, Chunk, Event, IngestionJob, Source
 
-MODELS = {"jobs": Job, "projects": Project, "skills": Skill, "documents": Document}
+MODELS = {"jobs": Job, "projects": Project, "documents": Document}
 
 
 def now():
@@ -34,8 +34,6 @@ def fingerprint(config: dict) -> str:
 
 
 def source_text(record) -> str:
-    if isinstance(record, Skill):
-        return f"Skill: {record.keyword}"
     if isinstance(record, Document):
         return f"Document: {record.title}\nFilename: {record.filename}"
     fields = [
@@ -105,6 +103,8 @@ def active_job(db, source_id):
 
 
 def create_job(db, source, record, trigger):
+    if source.source_type not in MODELS:
+        raise ValueError("Standalone skill ingestion is disabled")
     config = settings(db).model_dump()
     job = IngestionJob(
         source_id=source.id,
@@ -125,6 +125,8 @@ def create_job(db, source, record, trigger):
 
 
 def enqueue(db: Session, source_type: str, record, trigger="save", force=False):
+    if source_type not in MODELS:
+        raise ValueError("Standalone skill ingestion is disabled")
     db.flush()
     digest = record_hash(record)
     result = db.execute(
@@ -157,10 +159,11 @@ def enqueue(db: Session, source_type: str, record, trigger="save", force=False):
 
 
 def changed(db: Session, record):
-    source_type = next(
-        key for key, model in MODELS.items() if isinstance(record, model)
-    )
-    enqueue(db, source_type, record)
+    if not isinstance(record, Skill):
+        source_type = next(
+            key for key, model in MODELS.items() if isinstance(record, model)
+        )
+        enqueue(db, source_type, record)
     if isinstance(record, Job):
         for project in record.projects:
             enqueue(db, "projects", project, "related_change")
@@ -205,25 +208,16 @@ def summary(db, source_type, record_id):
     return summarize(db, source, fingerprint(settings(db).model_dump()))
 
 
-def summarize(db, source, current_fingerprint):
-    empty = {
-        "status": "not_ingested",
-        "job_id": None,
-        "stage": None,
-        "error": None,
-        "completed_chunks": 0,
-        "total_chunks": 0,
-    }
-    if source is None:
-        return empty
-    job = db.scalar(
-        select(IngestionJob)
-        .where(IngestionJob.source_id == source.id)
-        .order_by(IngestionJob.id.desc())
-        .limit(1)
-    )
-    if job is None:
-        return empty
+def job_summary(source, job, current_fingerprint):
+    if source is None or job is None:
+        return {
+            "status": "not_ingested",
+            "job_id": None,
+            "stage": None,
+            "error": None,
+            "completed_chunks": 0,
+            "total_chunks": 0,
+        }
     status = job.status
     if status == "succeeded" and (
         job.revision != source.revision or job.fingerprint != current_fingerprint
@@ -236,6 +230,50 @@ def summarize(db, source, current_fingerprint):
         "error": job.error,
         "completed_chunks": job.completed_chunks,
         "total_chunks": job.total_chunks,
+    }
+
+
+def summarize(db, source, current_fingerprint):
+    job = (
+        None
+        if source is None
+        else db.scalar(
+            select(IngestionJob)
+            .where(IngestionJob.source_id == source.id)
+            .order_by(IngestionJob.id.desc())
+            .limit(1)
+        )
+    )
+    return job_summary(source, job, current_fingerprint)
+
+
+def summaries(db, source_type, current_fingerprint=None):
+    """Load current records and latest jobs in three queries, regardless of count."""
+    current_fingerprint = current_fingerprint or fingerprint(settings(db).model_dump())
+    sources = {
+        source.record_id: source
+        for source in db.scalars(
+            select(Source).where(Source.source_type == source_type)
+        )
+    }
+    latest = {
+        job.source_id: job
+        for job in db.scalars(
+            select(IngestionJob)
+            .where(
+                IngestionJob.source_type == source_type,
+                IngestionJob.source_id.is_not(None),
+            )
+            .ext(distinct_on(IngestionJob.source_id))
+            .order_by(IngestionJob.source_id, IngestionJob.id.desc())
+        )
+    }
+    return {
+        str(record_id): job_summary(
+            source, latest.get(source.id) if source else None, current_fingerprint
+        )
+        for record_id in db.scalars(select(MODELS[source_type].id))
+        for source in [sources.get(record_id)]
     }
 
 
