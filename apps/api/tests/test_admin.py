@@ -4,43 +4,17 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.admin.models import Administrator, AdminSession, ProviderKey, RagConfiguration
 from app.admin.security import cipher, digest, matches
 from app.bootstrap import bootstrap
 from app.core.config import get_settings
-from app.db import get_engine, get_session
-from app.main import app
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_ADMIN_DB"),
     reason="Run scripts/check.sh for PostgreSQL tests",
 )
-
-
-@pytest.fixture
-def db():
-    with get_engine().connect() as connection:
-        transaction = connection.begin()
-        with Session(
-            bind=connection, join_transaction_mode="create_savepoint"
-        ) as session:
-            for model in (AdminSession, ProviderKey, RagConfiguration, Administrator):
-                session.execute(delete(model))
-            bootstrap(session)
-            yield session
-        transaction.rollback()
-
-
-@pytest.fixture
-def client(db):
-    app.dependency_overrides[get_session] = lambda: db
-    with TestClient(app, headers={"Origin": "http://testserver"}) as client:
-        yield client
-    app.dependency_overrides.clear()
 
 
 def sign_in(client, username="owner", password="initial-test-password"):

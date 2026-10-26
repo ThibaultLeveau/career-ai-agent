@@ -9,3 +9,5 @@
 - Record significant architectural decisions in `docs/adr`. Keep README setup instructions accurate.
 - Run `sh scripts/check.sh` before handing off a change. See README for focused checks and container workflows. Report skipped checks and failures explicitly.
 - Preserve existing user changes. Do not commit secrets or generated build output. Do not merge pull requests unless explicitly requested.
+
+- User preference: after completing development and required validation for this application, deploy the changes to the live site at https://thibault-leveau.com and verify its health. Treat deployment as part of the task unless the user explicitly asks otherwise. Preserve existing data and take a database backup before applying migrations.

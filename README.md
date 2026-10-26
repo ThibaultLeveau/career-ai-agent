@@ -1,6 +1,6 @@
 # Career AI
 
-An AI-powered personal portfolio with a public placeholder homepage and authenticated administration. The admin panel manages account credentials, encrypted OpenAI/Anthropic keys, and RAG configuration with provider connection tests. Document ingestion, indexing, and public chat are not implemented yet.
+An AI-powered personal portfolio with a public placeholder homepage and authenticated administration. The admin panel manages account credentials, encrypted OpenAI/Anthropic keys, and RAG configuration with provider connection tests. Jobs, projects, keyword skills, and resume PDFs can be managed in the admin panel. PDF extraction, indexing, and public chat are not implemented yet.
 
 ## Quick start
 
@@ -28,6 +28,14 @@ Open [administration](http://localhost:3000/admin) and sign in with the initial 
 In **Settings → AI & RAG**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Retrieval and chunking values configure the future pipeline, not a running RAG service.
 
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
+
+## Career content
+
+Use **Jobs**, **Projects**, **Skills**, and **Documents** in the admin sidebar to create, edit, search, and delete career content. Jobs and projects support month/year dates and structured plain-text descriptions. A project linked to a job is professional; otherwise it is personal. Projects can reference multiple skills. Jobs with linked projects cannot be deleted until those projects are reassigned, unlinked, or deleted. Deleting a skill removes its associations and keeps the projects.
+
+Documents accept multiple independent resume PDFs, up to 10 MiB each. Rename, replace, download, or delete them in the private admin workspace. File bytes are stored in PostgreSQL and included in its backups; replacement is atomic. Only authenticated administrators can download files. No extraction, embedding, or provider request runs when saving content.
+
+Existing installations must run the migration service (`docker compose run --rm migrate`) using the rebuilt API image before starting the updated application. Migration 0003 adds the content tables without changing existing account/settings data.
 
 ## Structure
 
@@ -88,7 +96,7 @@ The frontend production build runs as part of its runtime image build. To check 
 
 ## Database and migrations
 
-The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
+The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings; the third adds career content and PDF storage. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
 
 ```sh
 docker compose exec api alembic current

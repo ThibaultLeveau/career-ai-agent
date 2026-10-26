@@ -33,8 +33,16 @@ export async function adminRequest<T = undefined>(
 ): Promise<T> {
   const response = await fetch(`/api/admin/${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers:
+      body instanceof FormData
+        ? undefined
+        : { "Content-Type": "application/json" },
+    body:
+      body instanceof FormData
+        ? body
+        : body === undefined
+          ? undefined
+          : JSON.stringify(body),
     cache: "no-store",
   });
   if (response.status === 401 && path !== "login") {

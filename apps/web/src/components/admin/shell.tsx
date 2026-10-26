@@ -54,10 +54,11 @@ export function AdminShell({
   function nav(
     href: string,
     label: string,
-    icon: "home" | "settings",
+    icon: "home" | "settings" | "jobs" | "projects" | "skills" | "documents",
   ) {
     const active =
-      pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
+      pathname === href ||
+      (href !== "/admin" && pathname.startsWith(`${href}/`));
     return (
       <Link
         href={href}
@@ -112,6 +113,10 @@ export function AdminShell({
         <p className="nav-label">WORKSPACE</p>
         <nav aria-label="Main navigation">
           {nav("/admin", "Home", "home")}
+          {nav("/admin/jobs", "Jobs", "jobs")}
+          {nav("/admin/projects", "Projects", "projects")}
+          {nav("/admin/skills", "Skills", "skills")}
+          {nav("/admin/documents", "Documents", "documents")}
         </nav>
         <div className="sidebar-bottom">
           {nav("/admin/settings", "Settings", "settings")}
@@ -150,7 +155,10 @@ export function AdminShell({
               {pathname === "/admin/settings" ||
               pathname.startsWith("/admin/settings/")
                 ? "Settings"
-                : "Home"}
+                : pathname.split("/")[2]
+                  ? pathname.split("/")[2][0].toUpperCase() +
+                    pathname.split("/")[2].slice(1)
+                  : "Home"}
             </strong>
           </span>
           <span className="private-label">

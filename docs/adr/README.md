@@ -4,3 +4,5 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 
 - [0001: Monorepo foundation](0001-monorepo-foundation.md) — Accepted
 - [0002: Single-owner administration and RAG configuration](0002-admin-and-rag-settings.md) — Accepted
+
+- [0003: Career content and PDF storage](0003-career-content.md) — Accepted

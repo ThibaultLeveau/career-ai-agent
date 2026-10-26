@@ -7,6 +7,10 @@ export function Icon({
   size = 18,
 }: {
   name:
+    | "jobs"
+    | "projects"
+    | "skills"
+    | "documents"
     | "home"
     | "spark"
     | "settings"
@@ -18,6 +22,10 @@ export function Icon({
   size?: number;
 }) {
   const paths = {
+    jobs: "M3 7h18v14H3z M8 7V3h8v4 M3 12h18 M10 12v3h4v-3",
+    projects: "M3 5h7l2 3h9v13H3z",
+    skills: "M3 3h8l10 10-8 8L3 11z M7 7h.01",
+    documents: "M5 3h9l5 5v13H5z M14 3v6h5 M8 13h8 M8 17h6",
     home: "m3 10 9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8",
     spark: "m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z",
     settings:

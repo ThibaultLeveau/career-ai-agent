@@ -6,7 +6,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.admin import router as admin_router
+from app.api.content import router as content_router
 from app.api.health import router
+from app.content.upload_limit import UploadLimit
 from app.db import get_engine
 
 
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Career AI API", lifespan=lifespan)
 app.include_router(router)
 app.include_router(admin_router)
+app.include_router(content_router)
+app.add_middleware(UploadLimit)
 
 
 @app.middleware("http")

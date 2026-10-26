@@ -19,7 +19,7 @@ test("protects the panel and supports login/logout", async ({ page }) => {
   await page.screenshot({ path: "test-results/login.png" });
   await login(page);
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
-  await expect(navigation.getByRole("link")).toHaveText(["Home"]);
+  await expect(navigation.getByRole("link")).toHaveText(["Home", "Jobs", "Projects", "Skills", "Documents"]);
   await expect(navigation.getByRole("link", { name: "Home" })).toHaveAttribute(
     "aria-current",
     "page",

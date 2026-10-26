@@ -3,6 +3,7 @@ import logging
 from alembic import context
 
 from app.admin import models  # noqa: F401
+from app.content import models as content_models  # noqa: F401
 from app.core.config import get_settings
 from app.db import Base, get_engine
 
