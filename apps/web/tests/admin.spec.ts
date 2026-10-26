@@ -19,14 +19,27 @@ test("protects the panel and supports login/logout", async ({ page }) => {
   await page.screenshot({ path: "test-results/login.png" });
   await login(page);
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
-  await expect(navigation.getByRole("link")).toHaveText(["Home", "Jobs", "Projects", "Skills", "Documents"]);
+  await expect(navigation.getByRole("link")).toHaveText([
+    "Home",
+    "Jobs",
+    "Projects",
+    "Skills",
+    "Documents",
+    "Ingestion Jobs",
+  ]);
   await expect(navigation.getByRole("link", { name: "Home" })).toHaveAttribute(
     "aria-current",
     "page",
   );
-  await expect(page.getByRole("main")).toBeEmpty();
-  await expect(page.getByRole("navigation", { name: "Settings navigation" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "View portfolio" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Overview", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Settings navigation" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "View portfolio" })).toHaveCount(
+    0,
+  );
   await page.screenshot({ path: "test-results/home.png" });
   const cookies = await page.context().cookies();
   expect(
@@ -43,18 +56,20 @@ test("saves configuration, masks keys, and preserves unsaved changes", async ({
 }) => {
   await login(page);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/settings\/ai$/);
-  await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
-  const navigation = page.getByRole("navigation", { name: "Settings navigation" });
-  await expect(navigation.getByRole("link", { name: "AI & RAG" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(navigation.getByRole("link", { name: "Account & security" })).not.toHaveAttribute("aria-current");
+  await expect(
+    page.getByRole("link", { name: "Settings", exact: true }),
+  ).toHaveAttribute("aria-current", "location");
+  const navigation = page.getByRole("navigation", {
+    name: "Settings navigation",
+  });
+  await expect(
+    navigation.getByRole("link", { name: "AI Provider" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    navigation.getByRole("link", { name: "Account & security" }),
+  ).not.toHaveAttribute("aria-current");
   await page.goto("/admin/ai");
   await expect(page).toHaveURL(/\/admin\/settings\/ai$/);
   await page
@@ -80,11 +95,9 @@ test("saves configuration, masks keys, and preserves unsaved changes", async ({
     .getByRole("combobox", { name: "Model", exact: true })
     .fill("claude-haiku-5-5");
   await page.getByRole("switch", { name: "Enable reranking" }).check();
-  await page.getByText("Retrieval & chunking", { exact: true }).click();
-  await page.getByLabel(/^Chunk size \(tokens\)/).fill("900");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
-    page.getByRole("status").filter({ hasText: "RAG settings saved." }),
+    page.getByRole("status").filter({ hasText: "AI settings saved." }),
   ).toBeVisible();
   await page.reload();
   await expect(
@@ -113,9 +126,22 @@ test("saves configuration, masks keys, and preserves unsaved changes", async ({
   await expect(
     chat.getByRole("combobox", { name: "Model", exact: true }),
   ).toHaveValue("claude-haiku-5-5");
+  await page.request.delete("/api/admin/providers/openai", {
+    headers: { Origin: new URL(page.url()).origin },
+  });
+  await page.getByRole("link", { name: "RAG", exact: true }).click();
+  await page.getByLabel("Chunk size (tokens)", { exact: true }).fill("900");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("RAG settings saved.");
+  await page.reload();
+  await expect(
+    page.getByLabel("Chunk size (tokens)", { exact: true }),
+  ).toHaveValue("900");
 });
 
-test("current password alone does not trigger unsaved changes", async ({ page }) => {
+test("current password alone does not trigger unsaved changes", async ({
+  page,
+}) => {
   await login(page);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   const dialogs: string[] = [];
@@ -126,9 +152,13 @@ test("current password alone does not trigger unsaved changes", async ({ page })
 
   await page.getByLabel(/^Username/).fill(username);
   await page.getByLabel(/^Current password/).fill(password);
-  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
-  await expect(page.getByText("Your account is up to date", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Save changes", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("Your account is up to date", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/settings\/ai$/);
   expect(dialogs).toEqual([]);
 
@@ -138,12 +168,12 @@ test("current password alone does not trigger unsaved changes", async ({ page })
   expect(dialogs).toEqual([]);
   await page.getByLabel(/^Current password/).fill(password);
   await page.getByLabel(/^New password/).fill("unsaved-new-password");
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/settings$/);
   expect(dialogs).toEqual(["Discard your unsaved changes?"]);
 
   await page.getByLabel(/^New password/).fill("");
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/settings\/ai$/);
   expect(dialogs).toHaveLength(1);
 });
@@ -153,19 +183,20 @@ test("credential changes require current password and invalidate old sessions", 
 }) => {
   await login(page);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Account & security" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    page.getByRole("link", { name: "Account & security" }),
+  ).toHaveAttribute("aria-current", "page");
   await page.screenshot({ path: "test-results/account-settings.png" });
   await page.getByLabel(/^Username/).fill("updated-admin");
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/settings$/);
   await page.getByLabel(/^Current password/).fill("incorrect-password");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Current password is incorrect" }),
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Current password is incorrect" }),
   ).toBeVisible();
   await page.getByLabel(/^Current password/).fill(password);
   await page.getByLabel(/^New password/).fill("updated-test-password");
@@ -190,7 +221,9 @@ test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
   await page
     .getByRole("button", { name: "Open navigation", exact: true })
     .click();
-  await expect(page.getByRole("navigation", { name: "Main navigation" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Main navigation" }),
+  ).toBeVisible();
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Sign out" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -201,11 +234,15 @@ test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
   ).toBeFocused();
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("navigation", { name: "Main navigation" })).toBeHidden();
-  await expect(page.getByRole("navigation", { name: "Settings navigation" })).toBeVisible();
-  await page.getByRole("link", { name: "AI & RAG", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "AI & RAG", exact: true }),
+    page.getByRole("navigation", { name: "Main navigation" }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("navigation", { name: "Settings navigation" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "AI Provider", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "AI Provider", exact: true }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
   for (const width of [390, 768, 1023, 1024, 1280]) {

@@ -16,6 +16,9 @@ export type RagSettings = {
   retrieval: {
     candidate_count: number;
     context_count: number;
+  };
+  ingestion: {
+    max_retries: number;
     chunk_size: number;
     chunk_overlap: number;
   };
@@ -60,6 +63,7 @@ export async function adminRequest<T = undefined>(
           : "Something went wrong. Please try again.",
     );
   }
+  if (method !== "GET") window.dispatchEvent(new Event("ingestion-updated"));
   return data as T;
 }
 

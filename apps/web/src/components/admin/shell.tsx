@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { adminRequest, reloadAdmin } from "@/lib/admin";
+import { IngestionProvider } from "./ingestion-status";
 import { Icon, Notice } from "./ui";
 
 export function AdminShell({
@@ -88,86 +89,95 @@ export function AdminShell({
     }
   }
   return (
-    <div className="admin-shell">
-      {open && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside
-        id="admin-sidebar"
-        ref={drawer}
-        className={`admin-sidebar ${open ? "is-open" : ""}`}
-      >
-        <Link href="/admin" className="brand" onClick={() => setOpen(false)}>
-          <span className="brand-mark">
-            <Icon name="spark" size={20} />
-          </span>
-          <span>
-            Career AI<small>WORKSPACE</small>
-          </span>
-          <span className="admin-label">Admin</span>
-        </Link>
-        <p className="nav-label">WORKSPACE</p>
-        <nav aria-label="Main navigation">
-          {nav("/admin", "Home", "home")}
-          {nav("/admin/jobs", "Jobs", "jobs")}
-          {nav("/admin/projects", "Projects", "projects")}
-          {nav("/admin/skills", "Skills", "skills")}
-          {nav("/admin/documents", "Documents", "documents")}
-        </nav>
-        <div className="sidebar-bottom">
-          {nav("/admin/settings", "Settings", "settings")}
-          <div className="account-row">
-            <span className="avatar">{username.slice(0, 2).toUpperCase()}</span>
-            <div>
-              <strong>{username}</strong>
-              <small>Administrator</small>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="Sign out"
-              onClick={logout}
-            >
-              <Icon name="logout" />
-            </button>
-          </div>
-          <Notice error>{error}</Notice>
-        </div>
-      </aside>
-      <div className="admin-main" inert={open || undefined}>
-        <div className="admin-topbar">
+    <IngestionProvider>
+      <div className="admin-shell">
+        {open && (
           <button
-            ref={trigger}
-            className="icon-button mobile-menu"
-            aria-label="Open navigation"
-            aria-expanded={open}
-            aria-controls="admin-sidebar"
-            onClick={() => setOpen(true)}
-          >
-            <Icon name="menu" />
-          </button>
-          <span>
-            Workspace<span className="breadcrumb-slash">/</span>
-            <strong>
-              {pathname === "/admin/settings" ||
-              pathname.startsWith("/admin/settings/")
-                ? "Settings"
-                : pathname.split("/")[2]
-                  ? pathname.split("/")[2][0].toUpperCase() +
-                    pathname.split("/")[2].slice(1)
-                  : "Home"}
-            </strong>
-          </span>
-          <span className="private-label">
-            <Icon name="lock" size={13} />
-            Private workspace
-          </span>
+            className="sidebar-backdrop"
+            aria-label="Close navigation"
+            onClick={() => setOpen(false)}
+          />
+        )}
+        <aside
+          id="admin-sidebar"
+          ref={drawer}
+          className={`admin-sidebar ${open ? "is-open" : ""}`}
+        >
+          <Link href="/admin" className="brand" onClick={() => setOpen(false)}>
+            <span className="brand-mark">
+              <Icon name="spark" size={20} />
+            </span>
+            <span>
+              Career AI<small>WORKSPACE</small>
+            </span>
+            <span className="admin-label">Admin</span>
+          </Link>
+          <p className="nav-label">WORKSPACE</p>
+          <nav aria-label="Main navigation">
+            {nav("/admin", "Home", "home")}
+            {nav("/admin/jobs", "Jobs", "jobs")}
+            {nav("/admin/projects", "Projects", "projects")}
+            {nav("/admin/skills", "Skills", "skills")}
+            {nav("/admin/documents", "Documents", "documents")}
+            {nav("/admin/ingestion", "Ingestion Jobs", "documents")}
+          </nav>
+          <div className="sidebar-bottom">
+            {nav("/admin/settings", "Settings", "settings")}
+            <div className="account-row">
+              <span className="avatar">
+                {username.slice(0, 2).toUpperCase()}
+              </span>
+              <div>
+                <strong>{username}</strong>
+                <small>Administrator</small>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Sign out"
+                onClick={logout}
+              >
+                <Icon name="logout" />
+              </button>
+            </div>
+            <Notice error>{error}</Notice>
+          </div>
+        </aside>
+        <div className="admin-main" inert={open || undefined}>
+          <div className="admin-topbar">
+            <button
+              ref={trigger}
+              className="icon-button mobile-menu"
+              aria-label="Open navigation"
+              aria-expanded={open}
+              aria-controls="admin-sidebar"
+              onClick={() => setOpen(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            <span>
+              Workspace<span className="breadcrumb-slash">/</span>
+              <strong>
+                {pathname === "/admin/settings" ||
+                pathname.startsWith("/admin/settings/")
+                  ? pathname === "/admin/settings/ai"
+                    ? "Settings / AI Provider"
+                    : "Settings"
+                  : pathname.startsWith("/admin/ingestion")
+                    ? "Ingestion Jobs"
+                    : pathname.split("/")[2]
+                      ? pathname.split("/")[2][0].toUpperCase() +
+                        pathname.split("/")[2].slice(1)
+                      : "Home"}
+              </strong>
+            </span>
+            <span className="private-label">
+              <Icon name="lock" size={13} />
+              Private workspace
+            </span>
+          </div>
+          <main>{children}</main>
         </div>
-        <main>{children}</main>
       </div>
-    </div>
+    </IngestionProvider>
   );
 }

@@ -14,6 +14,7 @@ from app.admin.schemas import (
     ProviderStatus,
     RagSettings,
     SessionInfo,
+    SettingsPatch,
     Stage,
     TestResult,
 )
@@ -144,9 +145,31 @@ def read_settings(administrator: Admin, db: Database) -> RagSettings:
 
 @router.put("/settings", response_model=RagSettings)
 def save_settings(data: RagSettings, administrator: Admin, db: Database) -> RagSettings:
+    db.scalar(
+        select(RagConfiguration).where(RagConfiguration.id == 1).with_for_update()
+    )
     db.merge(RagConfiguration(id=1, configuration=data.model_dump()))
     db.commit()
     return data
+
+
+@router.patch("/settings", response_model=RagSettings)
+def patch_settings(
+    data: SettingsPatch, administrator: Admin, db: Database
+) -> RagSettings:
+    saved = db.scalar(
+        select(RagConfiguration).where(RagConfiguration.id == 1).with_for_update()
+    )
+    current = (
+        RagSettings.model_validate(saved.configuration).model_dump()
+        if saved
+        else RagSettings().model_dump()
+    )
+    current.update(data.model_dump(exclude_none=True, exclude_unset=True))
+    result = RagSettings.model_validate(current)
+    db.merge(RagConfiguration(id=1, configuration=result.model_dump()))
+    db.commit()
+    return result
 
 
 @router.post("/test/{stage}", response_model=TestResult)

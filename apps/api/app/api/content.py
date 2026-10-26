@@ -20,6 +20,7 @@ from app.content.schemas import (
     SkillOutput,
 )
 from app.db import Base
+from app.ingestion.service import changed, enqueue, remove
 
 router = APIRouter(
     prefix="/admin",
@@ -39,6 +40,7 @@ def get_record[T: Base](model: type[T], record_id: int, db: Session) -> T:
 def save[T: Base](record: T, db: Session) -> T:
     db.add(record)
     try:
+        changed(db, record)
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -81,6 +83,7 @@ def delete_job(record_id: int, db: Database):
         raise HTTPException(
             409, "Reassign, unlink, or delete this job's projects first."
         )
+    remove(db, "jobs", record_id)
     db.delete(record)
     try:
         db.commit()
@@ -128,6 +131,7 @@ def update_project(record_id: int, data: ProjectInput, db: Database):
 
 @router.delete("/projects/{record_id}", status_code=204)
 def delete_project(record_id: int, db: Database):
+    remove(db, "projects", record_id)
     db.delete(get_record(Project, record_id, db))
     db.commit()
 
@@ -141,6 +145,7 @@ def save_skill(record: Skill, data: SkillInput, db: Session) -> Skill:
     record.keyword = data.keyword
     db.add(record)
     try:
+        changed(db, record)
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -166,7 +171,13 @@ def update_skill(record_id: int, data: SkillInput, db: Database):
 
 @router.delete("/skills/{record_id}", status_code=204)
 def delete_skill(record_id: int, db: Database):
-    db.delete(get_record(Skill, record_id, db))
+    record = get_record(Skill, record_id, db)
+    projects = list(db.scalars(select(Project).where(Project.skills.any(id=record_id))))
+    remove(db, "skills", record_id)
+    for project in projects:
+        project.skills = [skill for skill in project.skills if skill.id != record_id]
+        enqueue(db, "projects", project, "related_change")
+    db.delete(record)
     db.commit()
 
 
@@ -242,5 +253,6 @@ def download_document(record_id: int, db: Database):
 
 @router.delete("/documents/{record_id}", status_code=204)
 def delete_document(record_id: int, db: Database):
+    remove(db, "documents", record_id)
     db.delete(get_record(Document, record_id, db))
     db.commit()

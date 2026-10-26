@@ -1,8 +1,11 @@
+import type { IngestionSummary } from "./ingestion";
+
 export type ContentRecord = {
   id: number;
   created_at: string;
   updated_at: string;
 };
+export type IngestibleRecord = ContentRecord & { ingestion: IngestionSummary };
 export type Timeline = {
   start_month: string | null;
   end_month: string | null;
@@ -16,7 +19,7 @@ export type JobInput = Timeline & {
   responsibilities: string;
   achievements: string;
 };
-export type Job = JobInput & ContentRecord & { project_count: number };
+export type Job = JobInput & IngestibleRecord & { project_count: number };
 export type Skill = ContentRecord & { keyword: string };
 export type ProjectInput = Timeline & {
   name: string;
@@ -29,11 +32,11 @@ export type ProjectInput = Timeline & {
   skill_ids: number[];
 };
 export type Project = Omit<ProjectInput, "skill_ids"> &
-  ContentRecord & {
+  IngestibleRecord & {
     kind: "professional" | "personal";
     skills: Skill[];
   };
-export type ResumeDocument = ContentRecord & {
+export type ResumeDocument = IngestibleRecord & {
   title: string;
   filename: string;
   size: number;

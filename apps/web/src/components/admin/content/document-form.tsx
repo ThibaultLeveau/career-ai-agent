@@ -1,5 +1,7 @@
 "use client";
 
+import { IngestionStatus } from "../ingestion-status";
+
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { adminRequest } from "@/lib/admin";
@@ -62,6 +64,13 @@ export function DocumentForm({ document }: { document?: ResumeDocument }) {
   }
   return (
     <>
+      {document && (
+        <IngestionStatus
+          sourceType="documents"
+          recordId={document.id}
+          initial={document.ingestion}
+        />
+      )}
       <form onSubmit={submit}>
         <fieldset disabled={busy} className="settings-section content-form">
           <Field

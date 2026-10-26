@@ -155,7 +155,7 @@ def test_settings_roundtrip_and_validation(client):
         ("chat", {"provider": "other"}),
         ("embeddings", {"provider": "anthropic"}),
         ("embeddings", {"dimensions": 2000}),
-        ("retrieval", {"chunk_overlap": 800}),
+        ("ingestion", {"chunk_overlap": 800}),
         ("retrieval", {"context_count": 21}),
     ]:
         invalid = {**data, section: {**data[section], **change}}

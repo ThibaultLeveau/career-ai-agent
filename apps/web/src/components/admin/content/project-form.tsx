@@ -1,5 +1,7 @@
 "use client";
 
+import { IngestionStatus } from "../ingestion-status";
+
 import { useState } from "react";
 import type { Job, Project, ProjectInput, Skill } from "@/lib/content";
 import { Notice } from "../ui";
@@ -59,6 +61,13 @@ export function ProjectForm({
   });
   return (
     <>
+      {project && (
+        <IngestionStatus
+          sourceType="projects"
+          recordId={project.id}
+          initial={project.ingestion}
+        />
+      )}
       <form onSubmit={editor.submit}>
         <fieldset
           disabled={editor.busy || creatingSkill}

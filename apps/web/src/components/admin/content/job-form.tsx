@@ -1,5 +1,7 @@
 "use client";
 
+import { IngestionStatus } from "../ingestion-status";
+
 import Link from "next/link";
 import type { Job, JobInput, Project } from "@/lib/content";
 import { Notice } from "../ui";
@@ -50,6 +52,13 @@ export function JobForm({
   });
   return (
     <>
+      {job && (
+        <IngestionStatus
+          sourceType="jobs"
+          recordId={job.id}
+          initial={job.ingestion}
+        />
+      )}
       <form onSubmit={editor.submit}>
         <fieldset
           disabled={editor.busy}

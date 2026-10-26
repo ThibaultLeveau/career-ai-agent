@@ -53,6 +53,21 @@ services:
       retries: 12
       start_period: 10s
 
+  worker:
+    <<: *api
+    command: ["python", "-m", "app.ingestion.worker"]
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,time; assert time.time()-pathlib.Path('/tmp/ingestion-heartbeat').stat().st_mtime < 120"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   web:
     build:
       context: ./apps/web
