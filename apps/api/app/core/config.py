@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     postgres_db: str = Field(min_length=1)
     postgres_user: str = Field(min_length=1)
     postgres_password: SecretStr = Field(min_length=1)
+    app_origin: str = "http://localhost:3000"
+    admin_initial_username: str = ""
+    admin_initial_password: SecretStr = SecretStr("")
+    settings_encryption_key: SecretStr = SecretStr("")
 
     @property
     def database_url(self) -> URL:

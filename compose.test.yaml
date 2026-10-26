@@ -1,0 +1,13 @@
+services:
+  e2e:
+    build:
+      context: ./apps/web
+      target: test
+    init: true
+    shm_size: 1gb
+    environment:
+      BASE_URL: http://web:3000
+      ADMIN_INITIAL_USERNAME: ${ADMIN_INITIAL_USERNAME}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+    volumes:
+      - ./apps/web/test-results:/app/test-results

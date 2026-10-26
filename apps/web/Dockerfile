@@ -10,6 +10,14 @@ RUN chown node:node /app
 USER node
 CMD ["npm", "run", "dev"]
 
+FROM dependencies AS test
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+RUN npx playwright install --with-deps chromium
+COPY --chown=node:node . .
+RUN chown node:node /app
+USER node
+CMD ["npm", "run", "test:e2e"]
+
 FROM dependencies AS build
 COPY . .
 RUN npm run build
