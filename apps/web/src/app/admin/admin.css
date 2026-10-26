@@ -1029,3 +1029,35 @@
     flex-basis: auto;
   }
 }
+
+.ingestion-control { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; max-width: 22rem; font-size: .8rem; padding: .5rem 0; }
+.ingestion-state { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; white-space: nowrap; color: var(--muted); }
+.ingestion-succeeded { color: #6ee7b7; }
+.ingestion-failed, .ingestion-error { color: #fda4af; }
+.ingestion-outdated, .ingestion-retrying { color: #fbbf24; }
+.ingestion-error { display: block; flex-basis: 100%; font-size: .8rem; overflow-wrap: anywhere; }
+.ingestion-spin { animation: ingestion-spin 1s linear infinite; }
+@keyframes ingestion-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ingestion-spin { animation: none; } }
+.ingestion-job-list { display: grid; gap: 1rem; }
+.ingestion-job { border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; background: var(--surface); min-width: 0; margin-bottom: .5rem; }
+.ingestion-job-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.ingestion-job h2 { font-size: 1rem; margin: .3rem 0; overflow-wrap: anywhere; }
+.ingestion-job small, .ingestion-job-meta { color: var(--muted); font-size: .78rem; }
+.ingestion-job-meta { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; margin: .8rem 0; }
+.ingestion-job progress { width: 100%; height: .4rem; accent-color: var(--accent); margin-bottom: .8rem; }
+.ingestion-details { display: grid; grid-template-columns: auto 1fr; gap: .5rem 1rem; font-size: .8rem; margin-top: 1rem; }
+.ingestion-details dd { margin: 0; overflow-wrap: anywhere; }
+.ingestion-logs { margin-top: 1rem; padding: 1rem; background: #080f20; border-radius: 8px; max-height: 24rem; overflow: auto; font-size: .8rem; }
+.ingestion-logs ol { margin: 0; padding: 0; list-style: none; }
+.ingestion-logs li { display: grid; grid-template-columns: minmax(9rem, auto) 1fr; gap: .75rem; padding: .4rem 0; overflow-wrap: anywhere; }
+.ingestion-logs time { color: var(--muted); }
+.ingestion-logs .log-error { color: #fda4af; }
+.ingestion-logs .log-warning { color: #fbbf24; }
+.ingestion-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin: 1.5rem 0; font-size: .8rem; }
+.ingestion-dialog { border: 1px solid var(--border); border-radius: 16px; width: min(30rem, calc(100vw - 2rem)); padding: 1.5rem; color: #e2e8f0; background: var(--surface); }
+.ingestion-dialog::backdrop { background: #13202d80; }
+.ingestion-dialog p { color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.ingestion-dialog .checkbox-label { margin: 1rem 0; }
+.ingestion-dialog-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }
+@media (max-width: 640px) { .ingestion-job-heading { flex-wrap: wrap; } .ingestion-logs li { grid-template-columns: 1fr; gap: .2rem; } .ingestion-control { max-width: 100%; } }

@@ -187,12 +187,12 @@ export function AISettings({
     await action("settings", async () => {
       const result = await adminRequest<RagSettings>(
         "settings",
-        "PUT",
-        settings,
+        "PATCH",
+        { chat: settings.chat, embeddings: settings.embeddings, reranking: settings.reranking },
       );
       setSaved(result);
       setSettings(result);
-      setNotice({ message: "RAG settings saved.", error: false });
+      setNotice({ message: "AI settings saved.", error: false });
       router.refresh();
     });
   }
@@ -481,69 +481,6 @@ export function AISettings({
             )}
           </section>
 
-          <section className="settings-section">
-            <details className="retrieval-details">
-              <summary>
-                <span className="section-number">04</span>
-                <span>
-                  <strong>Retrieval & chunking</strong>
-                  <small>Advanced settings for the future RAG pipeline.</small>
-                </span>
-              </summary>
-              <div className="field-grid retrieval-fields">
-                {(
-                  [
-                    [
-                      "candidate_count",
-                      "Retrieval candidates",
-                      1,
-                      100,
-                      "Passages retrieved before reranking.",
-                    ],
-                    [
-                      "context_count",
-                      "Context passages",
-                      1,
-                      settings.retrieval.candidate_count,
-                      "Passages included in the final context.",
-                    ],
-                    [
-                      "chunk_size",
-                      "Chunk size (tokens)",
-                      100,
-                      8000,
-                      "Target size of each document chunk.",
-                    ],
-                    [
-                      "chunk_overlap",
-                      "Chunk overlap (tokens)",
-                      0,
-                      settings.retrieval.chunk_size - 1,
-                      "Shared tokens between adjacent chunks.",
-                    ],
-                  ] as const
-                ).map(([key, label, min, max, hint]) => (
-                  <label key={key}>
-                    {label}
-                    <input
-                      type="number"
-                      required
-                      min={min}
-                      max={max}
-                      value={settings.retrieval[key]}
-                      onChange={(event) =>
-                        update("retrieval", {
-                          ...settings.retrieval,
-                          [key]: Number(event.target.value),
-                        })
-                      }
-                    />
-                    <small>{hint}</small>
-                  </label>
-                ))}
-              </div>
-            </details>
-          </section>
         </fieldset>
         <p className="field-hint connection-hint">
           Tests use the current form values and make a small, billable provider
@@ -552,8 +489,8 @@ export function AISettings({
         <div className="save-bar">
           <span>
             {dirty
-              ? "You have unsaved RAG changes"
-              : "RAG settings are up to date"}
+              ? "You have unsaved AI changes"
+              : "AI settings are up to date"}
             {keyDirty && <small>API keys have separate Save buttons.</small>}
           </span>
           <button

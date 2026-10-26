@@ -35,6 +35,17 @@ class Record:
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    @property
+    def ingestion(self):
+        from sqlalchemy.orm import object_session
+
+        from app.ingestion.service import MODELS, summary
+
+        source_type = next(
+            key for key, model in MODELS.items() if isinstance(self, model)
+        )
+        return summary(object_session(self), source_type, self.id)
+
 
 class Timeline:
     start_month: Mapped[str | None] = mapped_column(String(7))

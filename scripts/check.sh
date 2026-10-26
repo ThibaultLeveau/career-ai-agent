@@ -49,6 +49,15 @@ compose -f compose.yaml -f compose.test.yaml build e2e
 mkdir -p apps/web/test-results
 compose -f compose.yaml -f compose.test.yaml run --rm --no-deps --user "$(id -u):$(id -g)" e2e
 compose run --rm --no-deps migrate alembic check
+compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+    "UPDATE rag_configuration SET configuration = jsonb_set(configuration::jsonb, '{ingestion,chunk_size}', '950');"
+compose stop worker
+compose run --rm --no-deps migrate alembic downgrade 0003
+test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
+    "SELECT configuration->'retrieval'->>'chunk_size' FROM rag_configuration")" = "950"
+compose run --rm --no-deps migrate alembic upgrade head
+test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
+    "SELECT configuration->'ingestion'->>'chunk_size' FROM rag_configuration")" = "950"
 compose run --rm --no-deps migrate alembic downgrade base
 compose run --rm --no-deps migrate alembic upgrade head
 compose run --rm --no-deps migrate alembic upgrade head
@@ -56,14 +65,14 @@ compose run --rm migrate
 
 verify_database() {
     test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_extension WHERE extname = 'vector'")" = "1"
-    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0003"
+    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0004"
 }
 
 verify_database
 compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
     "CREATE TABLE initialization_probe (id integer PRIMARY KEY); INSERT INTO initialization_probe VALUES (42);"
 compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
-    "UPDATE administrator SET username = 'persisted-admin'; UPDATE rag_configuration SET configuration = jsonb_set(configuration::jsonb, '{retrieval,chunk_size}', '900');"
+    "UPDATE administrator SET username = 'persisted-admin'; UPDATE rag_configuration SET configuration = jsonb_set(configuration::jsonb, '{ingestion,chunk_size}', '900');"
 compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 INSERT INTO job (id, title, company, location, ongoing, summary, responsibilities, achievements)
 VALUES (100, 'persisted-job', 'Acme', '', false, '', '', '');
@@ -82,7 +91,7 @@ test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT username FROM administrator")" = "persisted-admin"
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
-    "SELECT configuration->'retrieval'->>'chunk_size' FROM rag_configuration")" = "900"
+    "SELECT configuration->'ingestion'->>'chunk_size' FROM rag_configuration")" = "900"
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT count(*) FROM project p JOIN job j ON p.job_id = j.id JOIN project_skill ps ON ps.project_id = p.id JOIN skill s ON s.id = ps.skill_id WHERE p.name = 'persisted-project' AND j.title = 'persisted-job' AND s.keyword = 'persisted-skill'")" = "1"
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \

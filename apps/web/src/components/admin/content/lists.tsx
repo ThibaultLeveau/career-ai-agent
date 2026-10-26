@@ -1,5 +1,6 @@
 "use client";
 
+import { IngestionStatus } from "../ingestion-status";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -43,6 +44,11 @@ export function JobsList({ jobs }: { jobs: Job[] }) {
                 {job.project_count === 1 ? "project" : "projects"}
               </small>
             </span>
+            <IngestionStatus
+              sourceType="jobs"
+              recordId={job.id}
+              initial={job.ingestion}
+            />
             <DeleteButton path={`jobs/${job.id}`} label={job.title} />
           </div>
         ))}
@@ -134,6 +140,11 @@ export function ProjectsList({
               </span>
               <small>{period(project)}</small>
             </span>
+            <IngestionStatus
+              sourceType="projects"
+              recordId={project.id}
+              initial={project.ingestion}
+            />
             <DeleteButton
               path={`projects/${project.id}`}
               label={project.name}
@@ -183,6 +194,11 @@ export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
             >
               Download
             </a>
+            <IngestionStatus
+              sourceType="documents"
+              recordId={doc.id}
+              initial={doc.ingestion}
+            />
             <DeleteButton path={`documents/${doc.id}`} label={doc.title} />
           </div>
         ))}

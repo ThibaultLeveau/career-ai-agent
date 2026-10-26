@@ -3,7 +3,7 @@ import { apiUrl } from "@/lib/admin-server";
 
 export const dynamic = "force-dynamic";
 const allowedPath =
-  /^(login|logout|session|credentials|settings|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
+  /^(login|logout|session|credentials|settings|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|skills|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
 
 async function proxy(
   request: NextRequest,
@@ -11,6 +11,19 @@ async function proxy(
 ) {
   const path = (await context.params).path.join("/");
   if (!allowedPath.test(path)) return new Response(null, { status: 404 });
+  const query = new URLSearchParams();
+  if (path.startsWith("ingestion/")) {
+    for (const [key, value] of request.nextUrl.searchParams) {
+      if (
+        !["source_type", "status", "offset", "limit", "after_id"].includes(key)
+      )
+        return Response.json(
+          { detail: "Unsupported query parameter" },
+          { status: 400 },
+        );
+      query.set(key, value);
+    }
+  }
   const session = request.cookies.get("career_admin");
   try {
     let body: ArrayBuffer | undefined;
@@ -45,19 +58,22 @@ async function proxy(
       }
       body = bytes.buffer;
     }
-    const upstream = await fetch(`${apiUrl}/admin/${path}`, {
-      method: request.method,
-      headers: {
-        "Content-Type":
-          request.headers.get("content-type") ?? "application/json",
-        Origin: request.headers.get("origin") ?? "",
-        Cookie: session ? `career_admin=${session.value}` : "",
+    const upstream = await fetch(
+      `${apiUrl}/admin/${path}${query.size ? `?${query}` : ""}`,
+      {
+        method: request.method,
+        headers: {
+          "Content-Type":
+            request.headers.get("content-type") ?? "application/json",
+          Origin: request.headers.get("origin") ?? "",
+          Cookie: session ? `career_admin=${session.value}` : "",
+        },
+        body,
+        cache: "no-store",
+        redirect: "manual",
+        signal: AbortSignal.timeout(35000),
       },
-      body,
-      cache: "no-store",
-      redirect: "manual",
-      signal: AbortSignal.timeout(35000),
-    });
+    );
     const headers = new Headers({ "Cache-Control": "no-store" });
     for (const name of [
       "Content-Type",
@@ -80,4 +96,10 @@ async function proxy(
   }
 }
 
-export { proxy as GET, proxy as POST, proxy as PUT, proxy as DELETE };
+export {
+  proxy as GET,
+  proxy as POST,
+  proxy as PUT,
+  proxy as DELETE,
+  proxy as PATCH,
+};

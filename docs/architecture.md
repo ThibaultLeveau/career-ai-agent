@@ -6,7 +6,7 @@ The repository is a small polyglot monorepo. Each application owns its manifest,
 
 - **API:** FastAPI wires routes and application lifetime. Configuration validates environment variables once. The database module owns the engine, declarative base, and request-scoped sessions. Synchronous database work runs in synchronous handlers.
 - **Web:** Next.js App Router renders the public placeholder and protected admin pages. Server components check the session before rendering; client forms call a fixed-destination, same-origin `/api/admin/*` proxy.
-- **Database:** PostgreSQL stores the administrator, session token hashes, encrypted provider keys, RAG configuration, career records, skill associations, and resume PDF bytes. pgvector is enabled for future ingestion/retrieval work.
+- **Database:** PostgreSQL stores the administrator, session token hashes, encrypted provider keys, RAG configuration, career records, skill associations, and resume PDF bytes. Ingestion jobs, logs, extracted text, and chunks are durable; pgvector stores embeddings.
 - **Migrations:** Alembic imports the same configuration and metadata as the API. The one-shot migration service must succeed before the API starts.
 
 ## Runtime
@@ -18,6 +18,8 @@ flowchart LR
     HealthClient[Health client] --> API[FastAPI :8000]
     API --> DB[(PostgreSQL + pgvector)]
     API --> Providers[OpenAI / Anthropic]
+    Worker[Ingestion worker] --> DB
+    Worker --> Providers
     Migration[Alembic migration job] --> DB
 ```
 
@@ -29,6 +31,8 @@ Production images run applications as non-root users and contain no development 
 
 See [ADR 0001](adr/0001-monorepo-foundation.md) for decisions and [README](../README.md) for commands.
 
-Admin endpoints enforce database-backed cookie sessions independently of the web layer. Mutations require the configured `APP_ORIGIN`. Sessions last 12 hours and are revoked on credential changes. Provider calls are limited to explicit connection tests; keys are encrypted with Fernet using a separate environment secret. Migration/bootstrap runs before API startup and never replaces an existing account or configuration. See [ADR 0002](adr/0002-admin-and-rag-settings.md).
+Admin endpoints enforce database-backed cookie sessions independently of the web layer. Mutations require the configured `APP_ORIGIN`. Sessions last 12 hours and are revoked on credential changes. Provider calls run in explicit connection tests and the ingestion worker; keys are encrypted with Fernet using a separate environment secret. Migration/bootstrap runs before API startup and never replaces an existing account or configuration. See [ADR 0002](adr/0002-admin-and-rag-settings.md).
 
 Career content uses authenticated `/admin/jobs`, `/admin/projects`, `/admin/skills`, and `/admin/documents` CRUD endpoints. Document create/update accepts multipart forms; downloads use `/admin/documents/{id}/file`. The proxy preserves binary bodies and download headers. See [ADR 0003](adr/0003-career-content.md).
+
+The dedicated worker claims PostgreSQL jobs with row locks and leases, processes source revisions, and publishes complete vector sets atomically. See [ADR 0004](adr/0004-rag-ingestion.md).

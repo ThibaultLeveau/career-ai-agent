@@ -13,6 +13,12 @@ services:
     volumes:
       - ./apps/api/migrations:/app/migrations
 
+  worker:
+    build:
+      target: development
+    volumes:
+      - ./apps/api/app:/app/app:ro
+
   web:
     build:
       target: development

@@ -6,7 +6,8 @@ import { Icon } from "./ui";
 
 const sections = [
   { href: "/admin/settings", label: "Account & security", icon: "lock" },
-  { href: "/admin/settings/ai", label: "AI & RAG", icon: "spark" },
+  { href: "/admin/settings/ai", label: "AI", icon: "spark" },
+  { href: "/admin/settings/rag", label: "RAG", icon: "documents" },
 ] as const;
 
 export function SettingsNavigation() {

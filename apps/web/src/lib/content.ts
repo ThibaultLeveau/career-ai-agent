@@ -1,7 +1,10 @@
+import type { IngestionSummary } from "./ingestion";
+
 export type ContentRecord = {
   id: number;
   created_at: string;
   updated_at: string;
+  ingestion: IngestionSummary;
 };
 export type Timeline = {
   start_month: string | null;

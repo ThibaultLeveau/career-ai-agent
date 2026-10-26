@@ -79,13 +79,21 @@ class Reranking(Generation):
 class Retrieval(StrictModel):
     candidate_count: int = Field(default=20, ge=1, le=100)
     context_count: int = Field(default=5, ge=1, le=100)
-    chunk_size: int = Field(default=800, ge=100, le=8000)
-    chunk_overlap: int = Field(default=100, ge=0, le=7999)
 
     @model_validator(mode="after")
     def valid_ranges(self) -> Self:
         if self.context_count > self.candidate_count:
             raise ValueError("Context count cannot exceed candidate count")
+        return self
+
+
+class Ingestion(StrictModel):
+    chunk_size: int = Field(default=800, ge=100, le=8000)
+    chunk_overlap: int = Field(default=100, ge=0, le=7999)
+    max_retries: int = Field(default=3, ge=0, le=10)
+
+    @model_validator(mode="after")
+    def valid_ranges(self) -> Self:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("Chunk overlap must be smaller than chunk size")
         return self
@@ -96,6 +104,15 @@ class RagSettings(StrictModel):
     embeddings: Embeddings = Field(default_factory=Embeddings)
     reranking: Reranking = Field(default_factory=Reranking)
     retrieval: Retrieval = Field(default_factory=Retrieval)
+    ingestion: Ingestion = Field(default_factory=Ingestion)
+
+
+class SettingsPatch(StrictModel):
+    chat: Chat | None = None
+    embeddings: Embeddings | None = None
+    reranking: Reranking | None = None
+    retrieval: Retrieval | None = None
+    ingestion: Ingestion | None = None
 
 
 class ConnectionTest(StrictModel):

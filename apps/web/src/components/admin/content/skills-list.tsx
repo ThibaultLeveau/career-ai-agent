@@ -1,5 +1,6 @@
 "use client";
 
+import { IngestionStatus } from "../ingestion-status";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { adminRequest } from "@/lib/admin";
@@ -75,6 +76,11 @@ function SkillRow({ skill }: { skill: Skill }) {
             </button>
           </>
         )}
+        <IngestionStatus
+          sourceType="skills"
+          recordId={skill.id}
+          initial={skill.ingestion}
+        />
         {!editing && (
           <DeleteButton
             path={`skills/${skill.id}`}

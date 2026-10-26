@@ -29,6 +29,7 @@ class RecordOutput(BaseModel):
     id: int
     created_at: datetime
     updated_at: datetime
+    ingestion: dict
 
 
 class TimelineInput(Input):

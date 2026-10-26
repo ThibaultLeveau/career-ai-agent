@@ -6,6 +6,7 @@ from app.admin import models  # noqa: F401
 from app.content import models as content_models  # noqa: F401
 from app.core.config import get_settings
 from app.db import Base, get_engine
+from app.ingestion import models as ingestion_models  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 
