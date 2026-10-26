@@ -130,10 +130,14 @@ test("saves configuration, masks keys, and preserves unsaved changes", async ({
     headers: { Origin: new URL(page.url()).origin },
   });
   await page.getByRole("link", { name: "RAG", exact: true }).click();
+  await page.getByLabel("Search mode", { exact: true }).selectOption("semantic");
+  await page.getByLabel("Expansion window", { exact: true }).fill("2");
   await page.getByLabel("Chunk size (tokens)", { exact: true }).fill("900");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("RAG settings saved.");
   await page.reload();
+  await expect(page.getByLabel("Search mode", { exact: true })).toHaveValue("semantic");
+  await expect(page.getByLabel("Expansion window", { exact: true })).toHaveValue("2");
   await expect(
     page.getByLabel("Chunk size (tokens)", { exact: true }),
   ).toHaveValue("900");

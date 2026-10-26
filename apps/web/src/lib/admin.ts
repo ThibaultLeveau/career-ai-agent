@@ -14,8 +14,10 @@ export type RagSettings = {
   };
   reranking: Generation & { enabled: boolean };
   retrieval: {
+    mode: "hybrid" | "semantic";
     candidate_count: number;
     context_count: number;
+    window_size: number;
   };
   ingestion: {
     max_retries: number;

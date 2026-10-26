@@ -77,8 +77,10 @@ class Reranking(Generation):
 
 
 class Retrieval(StrictModel):
+    mode: Literal["hybrid", "semantic"] = "hybrid"
     candidate_count: int = Field(default=20, ge=1, le=100)
     context_count: int = Field(default=5, ge=1, le=100)
+    window_size: int = Field(default=1, ge=0, le=5)
 
     @model_validator(mode="after")
     def valid_ranges(self) -> Self:

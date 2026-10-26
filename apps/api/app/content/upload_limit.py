@@ -8,13 +8,15 @@ class UploadLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        chat = scope["type"] == "http" and scope["path"] == "/chat"
         if (
             scope["type"] != "http"
-            or not scope["path"].startswith("/admin/documents")
+            or (not chat and not scope["path"].startswith("/admin/documents"))
             or scope["method"] not in {"POST", "PUT"}
         ):
             return await self.app(scope, receive, send)
-        # Bound the body before multipart parsing, including chunked requests.
+        # Bound bodies before parsing, including requests without Content-Length.
+        limit = 65536 if chat else MAX_UPLOAD_REQUEST
         chunks = []
         size = 0
         while True:
@@ -22,9 +24,13 @@ class UploadLimit:
             if message["type"] == "http.disconnect":
                 return
             size += len(message.get("body", b""))
-            if size > MAX_UPLOAD_REQUEST:
+            if size > limit:
                 response = JSONResponse(
-                    {"detail": "Upload is too large (maximum PDF size: 10 MiB)"},
+                    {
+                        "detail": "Chat request is too large"
+                        if chat
+                        else "Upload is too large (maximum PDF size: 10 MiB)"
+                    },
                     status_code=413,
                     headers={"Cache-Control": "no-store"},
                 )
