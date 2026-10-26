@@ -47,7 +47,7 @@ curl --fail --silent --show-error "http://127.0.0.1:$API_PORT/health"
 curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:$WEB_PORT"
 compose -f compose.yaml -f compose.test.yaml build e2e
 mkdir -p apps/web/test-results
-compose -f compose.yaml -f compose.test.yaml run --rm --no-deps e2e
+compose -f compose.yaml -f compose.test.yaml run --rm --no-deps --user "$(id -u):$(id -g)" e2e
 compose run --rm --no-deps migrate alembic check
 compose run --rm --no-deps migrate alembic downgrade base
 compose run --rm --no-deps migrate alembic upgrade head
