@@ -1,10 +1,67 @@
 .admin {
+  --background: #f6f7f9;
+  --background-transparent: #f6f7f900;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-subtle: #f3f4f7;
+  --surface-hover: #e9ebf0;
+  --sidebar-surface: #fbfbfc;
+  --text: #202127;
+  --text-secondary: #4f525e;
+  --text-muted: #646875;
+  --border: #e2e4ea;
+  --border-strong: #c6c9d3;
+  --accent: #505bc5;
+  --accent-hover: #404ba9;
+  --accent-soft: #eeeffb;
+  --on-accent: #ffffff;
+  --focus: #606bd9;
+  --danger: #b13d4d;
+  --danger-soft: #fcf0f2;
+  --success: #2f735c;
+  --success-soft: #edf6f1;
+  --warning: #8a641e;
+  --warning-soft: #fbf5e9;
+  --info: #3b6caa;
+  --info-soft: #eef4fc;
+  --overlay: #101116a8;
+  --shadow: 0 4px 20px #15172708, 0 1px 3px #15172706;
   --muted: var(--text-muted);
   background: var(--background);
   min-height: 100dvh;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
+}
+[data-theme="dark"] .admin {
+  --background: #101114;
+  --background-transparent: #10111400;
+  --surface: #191a1f;
+  --surface-raised: #222329;
+  --surface-subtle: #202127;
+  --surface-hover: #2a2c33;
+  --sidebar-surface: #15161a;
+  --text: #f2f3f5;
+  --text-secondary: #c1c3cd;
+  --text-muted: #a0a3b0;
+  --border: #2c2e37;
+  --border-strong: #444753;
+  --accent: #b0b8ff;
+  --accent-hover: #c7ccff;
+  --accent-soft: #272b43;
+  --on-accent: #191d3e;
+  --focus: #b0b8ff;
+  --danger: #ed9ca9;
+  --danger-soft: #36232a;
+  --success: #8cc8ad;
+  --success-soft: #21332b;
+  --warning: #d9bc83;
+  --warning-soft: #342e23;
+  --info: #9dbdea;
+  --info-soft: #253044;
+  --overlay: #08090ccc;
+  --shadow: 0 4px 20px #00000020, 0 1px 3px #00000018;
 }
 .admin button,
 .admin input,
@@ -65,7 +122,7 @@
 }
 .admin-sidebar {
   width: 240px;
-  background: var(--surface);
+  background: var(--sidebar-surface);
   border-right: 1px solid var(--border);
   position: fixed;
   inset: 0 auto 0 0;
@@ -76,11 +133,11 @@
 }
 .brand {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   padding: 0 6px;
   margin-bottom: 46px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 .brand-name {
@@ -94,8 +151,8 @@
   height: 34px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-subtle);
+  color: var(--text);
   flex-shrink: 0;
 }
 .admin-label {
@@ -132,8 +189,12 @@
   background: var(--surface-subtle);
 }
 .nav-item.active {
+  color: var(--text);
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.nav-item.active svg {
   color: var(--accent);
-  background: var(--accent-soft);
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -263,7 +324,7 @@
   margin-bottom: 32px;
 }
 .eyebrow {
-  color: var(--accent);
+  color: var(--text-muted);
   font-size: 10px;
   letter-spacing: 1.7px;
   font-weight: 500;
@@ -1121,22 +1182,22 @@
 .ingestion-expanded .ingestion-details { margin-top: 0; font-size: 11px; }
 .ingestion-expanded .ingestion-logs { font-size: 11px; margin-top: 16px; }
 
-.overview-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 28px; }
-.overview-card { background: linear-gradient(140deg, var(--surface), var(--surface-subtle)); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
-.overview-card:hover { border-color: var(--accent); }
+.overview-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.overview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+.overview-card:hover { border-color: var(--border-strong); background: var(--surface-subtle); }
 .overview-card > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-secondary); }
-.overview-card > div svg { color: var(--accent); opacity: .75; }
-.overview-card > strong { display: block; margin: 17px 0 14px; font-size: 32px; line-height: 1; font-weight: 500; letter-spacing: -1px; }
+.overview-card > div svg { box-sizing: content-box; width: 16px; height: 16px; padding: 7px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); color: var(--text-muted); }
+.overview-card > strong { display: block; margin: 16px 0 18px; font-size: 34px; line-height: 1; font-weight: 600; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
 .overview-card > small { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); }
-.overview-ingestion { background: radial-gradient(ellipse at 25% 35%, var(--accent-soft), transparent 65%), var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.overview-ingestion { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
 .overview-ingestion > header { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 26px 26px 0; }
-.overview-ingestion h2 { font-size: 17px; font-weight: 500; }
+.overview-ingestion h2 { font-size: 17px; font-weight: 600; }
 .overview-ingestion header p:not(.eyebrow) { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
 .funnel-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(180px, 1fr); align-items: center; gap: 26px; padding: 28px 26px 30px; }
 .funnel-visual { min-width: 0; }
 .funnel-visual svg { display: block; width: 100%; overflow: visible; }
-.funnel-label { font-size: 11px; letter-spacing: 2px; text-anchor: middle; }
-.funnel-value { font-size: 28px; fill: var(--text); text-anchor: middle; font-weight: 500; }
+.funnel-label { font-size: 11px; letter-spacing: 1.5px; text-anchor: middle; }
+.funnel-value { font-size: 28px; fill: var(--text); text-anchor: middle; font-weight: 500; font-variant-numeric: tabular-nums; }
 .funnel-legend > div { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
 .funnel-legend > div:last-child { border: 0; }
 .funnel-legend dt { font-size: 12px; color: var(--text-secondary); }

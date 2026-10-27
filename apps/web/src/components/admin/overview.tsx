@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { adminRequest } from "@/lib/admin";
 import { Icon, Notice } from "./ui";
 
@@ -45,7 +45,6 @@ const stages = [
 ] as const;
 
 function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
-  const id = useId();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
     <div className="funnel-layout">
@@ -55,21 +54,6 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
           role="img"
           aria-label={`Current ingestion: ${counts.pending} pending, ${counts.ongoing} ongoing, ${counts.failed} failed, ${counts.successful} successful`}
         >
-          <defs>
-            {stages.map(({ key, color }) => (
-              <linearGradient
-                key={key}
-                id={`${id}-${key}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop offset="0%" stopColor={color} stopOpacity=".21" />
-                <stop offset="100%" stopColor={color} stopOpacity=".05" />
-              </linearGradient>
-            ))}
-          </defs>
           <path
             d="M280 104v25 M280 217v18 Q280 245 260 245H155Q140 245 140 263 M280 235Q280 245 300 245H405Q420 245 420 263"
             fill="none"
@@ -79,15 +63,13 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
           />
           <path
             d="M40 20H520L455 106H105Z"
-            fill={`url(#${id}-pending)`}
-            stroke="var(--warning)"
-            strokeOpacity=".4"
+            fill="var(--surface-subtle)"
+            stroke="var(--border-strong)"
           />
           <path
             d="M108 130H452L389 216H171Z"
-            fill={`url(#${id}-ongoing)`}
-            stroke="var(--info)"
-            strokeOpacity=".4"
+            fill="var(--surface-subtle)"
+            stroke="var(--border-strong)"
           />
           <rect
             x="28"
@@ -95,9 +77,8 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
             width="224"
             height="68"
             rx="10"
-            fill={`url(#${id}-failed)`}
-            stroke="var(--danger)"
-            strokeOpacity=".35"
+            fill="var(--surface-subtle)"
+            stroke="var(--border-strong)"
           />
           <rect
             x="308"
@@ -105,9 +86,8 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
             width="224"
             height="68"
             rx="10"
-            fill={`url(#${id}-successful)`}
-            stroke="var(--success)"
-            strokeOpacity=".4"
+            fill="var(--surface-subtle)"
+            stroke="var(--border-strong)"
           />
           <text x="280" y="52" className="funnel-label" fill="var(--warning)">
             PENDING
