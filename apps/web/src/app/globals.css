@@ -1,5 +1,89 @@
 @import "tailwindcss";
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  color-scheme: light;
+  --background: #f7f8f2;
+  --background-transparent: #f7f8f200;
+  --surface: #fffefa;
+  --surface-raised: #ffffff;
+  --surface-subtle: #eef1e9;
+  --surface-hover: #e6ece1;
+  --text: #242b28;
+  --text-secondary: #4e5d54;
+  --text-muted: #626c5b;
+  --border: #dce2d5;
+  --border-strong: #a9b8a3;
+  --accent: #376456;
+  --accent-hover: #254c3e;
+  --accent-soft: #e5eee6;
+  --on-accent: #ffffff;
+  --focus: #467b68;
+  --danger: #a83d39;
+  --danger-soft: #fbeae6;
+  --success: #326951;
+  --success-soft: #e3f0e8;
+  --warning: #866019;
+  --warning-soft: #f8efd9;
+  --info: #3e6685;
+  --info-soft: #e7eff6;
+  --overlay: #16231dc0;
+  --shadow: 0 8px 28px #23382b0a, 0 2px 5px #23382b05;
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #191e1b;
+  --background-transparent: #191e1b00;
+  --surface: #202722;
+  --surface-raised: #27302a;
+  --surface-subtle: #242c26;
+  --surface-hover: #303b32;
+  --text: #edf0e8;
+  --text-secondary: #c0cbbd;
+  --text-muted: #a3b09e;
+  --border: #39443b;
+  --border-strong: #61755f;
+  --accent: #9ac5b4;
+  --accent-hover: #b8ddcd;
+  --accent-soft: #293e34;
+  --on-accent: #152b21;
+  --focus: #a7d4c1;
+  --danger: #f0a39a;
+  --danger-soft: #432c29;
+  --success: #a1cbb2;
+  --success-soft: #283d30;
+  --warning: #e0c184;
+  --warning-soft: #403826;
+  --info: #a9c8e1;
+  --info-soft: #293945;
+  --overlay: #0b110dd6;
+  --shadow: 0 8px 28px #00000018, 0 2px 5px #0000000d;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.theme-toggle:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.theme-sun, [data-theme="dark"] .theme-moon { display: none; }
+[data-theme="dark"] .theme-sun { display: block; }
+@media (prefers-reduced-motion: reduce) { .theme-toggle { transition: none; } }

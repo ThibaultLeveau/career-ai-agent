@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { captureThemes, setTheme } from "./theme";
 
 const username = process.env.ADMIN_INITIAL_USERNAME!;
 const password = process.env.ADMIN_INITIAL_PASSWORD!;
@@ -16,7 +17,11 @@ test("protects the panel and supports login/logout", async ({ page }) => {
   await page.goto("/admin/settings/ai");
   await expect(page).toHaveURL(/\/admin\/login$/);
   expect((await page.request.get("/api/admin/settings")).status()).toBe(401);
-  await page.screenshot({ path: "test-results/login.png" });
+  await expect(page.getByRole("link", { name: /Thibault Leveau/ }).locator("svg")).toHaveCount(1);
+  await captureThemes(page, "login");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await captureThemes(page, "login-mobile");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page);
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
   await expect(navigation.getByRole("link")).toHaveText([
@@ -40,7 +45,11 @@ test("protects the panel and supports login/logout", async ({ page }) => {
   await expect(page.getByRole("link", { name: "View portfolio" })).toHaveCount(
     0,
   );
-  await page.screenshot({ path: "test-results/home.png" });
+  await expect(page.getByRole("link", { name: /Thibault Leveau/ }).locator("svg")).toHaveCount(1);
+  await captureThemes(page, "admin-home");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await captureThemes(page, "admin-home-mobile");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const cookies = await page.context().cookies();
   expect(
     cookies.find((cookie) => cookie.name === "career_admin")?.httpOnly,
@@ -109,13 +118,21 @@ test("saves configuration, masks keys, and preserves unsaved changes", async ({
   await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
     "",
   );
-  await page.screenshot({
-    path: "test-results/ai-settings.png",
-    fullPage: true,
-  });
+  await captureThemes(page, "ai-settings");
   await chat
     .getByRole("combobox", { name: "Model", exact: true })
     .fill("unsaved-model");
+  const themeDialogs: string[] = [];
+  const onThemeDialog = async (dialog: import("@playwright/test").Dialog) => {
+    themeDialogs.push(dialog.message());
+    await dialog.dismiss();
+  };
+  page.on("dialog", onThemeDialog);
+  await captureThemes(page, "ai-settings-unsaved");
+  page.off("dialog", onThemeDialog);
+  expect(themeDialogs).toEqual([]);
+  await expect(chat.getByRole("combobox", { name: "Model", exact: true })).toHaveValue("unsaved-model");
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
   page.once("dialog", (dialog) => dialog.dismiss());
   await navigation.getByRole("link", { name: "Account & security" }).click();
   await expect(page).toHaveURL(/\/admin\/settings\/ai$/);
@@ -190,7 +207,7 @@ test("credential changes require current password and invalidate old sessions", 
   await expect(
     page.getByRole("link", { name: "Account & security" }),
   ).toHaveAttribute("aria-current", "page");
-  await page.screenshot({ path: "test-results/account-settings.png" });
+  await captureThemes(page, "account-settings");
   await page.getByLabel(/^Username/).fill("updated-admin");
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("link", { name: "AI Provider", exact: true }).click();
@@ -222,6 +239,13 @@ test("credential changes require current password and invalidate old sessions", 
 test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(page, theme);
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await expect(page.getByRole("navigation", { name: "Main navigation" })).toBeVisible();
+    await page.screenshot({ path: `test-results/admin-mobile-menu-${theme}.png`, fullPage: true, animations: "disabled" });
+    await page.keyboard.press("Escape");
+  }
   await page
     .getByRole("button", { name: "Open navigation", exact: true })
     .click();
@@ -231,7 +255,7 @@ test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Sign out" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Career AI" })).toBeFocused();
+  await expect(page.getByRole("link", { name: /Thibault Leveau/ })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
@@ -248,7 +272,7 @@ test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "AI Provider", exact: true }),
   ).toBeVisible();
-  await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
+  await captureThemes(page, "admin-settings-mobile");
   for (const width of [390, 768, 1023, 1024, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     expect(

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { adminRequest, reloadAdmin } from "@/lib/admin";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { IngestionProvider } from "./ingestion-status";
 import { Icon, Notice } from "./ui";
 
@@ -103,13 +105,11 @@ export function AdminShell({
           ref={drawer}
           className={`admin-sidebar ${open ? "is-open" : ""}`}
         >
-          <Link href="/admin" className="brand" onClick={() => setOpen(false)}>
+          <Link href="/admin" className="brand" aria-label="Thibault Leveau, administration" onClick={() => setOpen(false)}>
             <span className="brand-mark">
-              <Icon name="spark" size={20} />
+              <BrandMark size={24} />
             </span>
-            <span>
-              Career AI<small>WORKSPACE</small>
-            </span>
+            <span className="brand-name">Thibault Leveau</span>
             <span className="admin-label">Admin</span>
           </Link>
           <p className="nav-label">WORKSPACE</p>
@@ -170,10 +170,13 @@ export function AdminShell({
                       : "Home"}
               </strong>
             </span>
-            <span className="private-label">
-              <Icon name="lock" size={13} />
-              Private workspace
-            </span>
+            <div className="admin-topbar-actions">
+              <span className="private-label">
+                <Icon name="lock" size={13} />
+                Private workspace
+              </span>
+              <ThemeToggle />
+            </div>
           </div>
           <main>{children}</main>
         </div>

@@ -22,25 +22,25 @@ const stages = [
     key: "pending",
     label: "Pending",
     description: "Queued or awaiting ingestion",
-    color: "#fbbf24",
+    color: "var(--warning)",
   },
   {
     key: "ongoing",
     label: "Ongoing",
     description: "Processing or retrying",
-    color: "#7dd3fc",
+    color: "var(--info)",
   },
   {
     key: "failed",
     label: "Failed",
     description: "Needs your attention",
-    color: "#fda4af",
+    color: "var(--danger)",
   },
   {
     key: "successful",
     label: "Successful",
     description: "Current and ready to retrieve",
-    color: "#5eead4",
+    color: "var(--success)",
   },
 ] as const;
 
@@ -73,20 +73,20 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
           <path
             d="M280 104v25 M280 217v18 Q280 245 260 245H155Q140 245 140 263 M280 235Q280 245 300 245H405Q420 245 420 263"
             fill="none"
-            stroke="#334155"
+            stroke="var(--border-strong)"
             strokeWidth="1.5"
             strokeDasharray="4 5"
           />
           <path
             d="M40 20H520L455 106H105Z"
             fill={`url(#${id}-pending)`}
-            stroke="#fbbf24"
+            stroke="var(--warning)"
             strokeOpacity=".4"
           />
           <path
             d="M108 130H452L389 216H171Z"
             fill={`url(#${id}-ongoing)`}
-            stroke="#7dd3fc"
+            stroke="var(--info)"
             strokeOpacity=".4"
           />
           <rect
@@ -96,7 +96,7 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
             height="68"
             rx="10"
             fill={`url(#${id}-failed)`}
-            stroke="#fda4af"
+            stroke="var(--danger)"
             strokeOpacity=".35"
           />
           <rect
@@ -106,28 +106,28 @@ function Funnel({ counts }: { counts: OverviewData["ingestion"] }) {
             height="68"
             rx="10"
             fill={`url(#${id}-successful)`}
-            stroke="#5eead4"
+            stroke="var(--success)"
             strokeOpacity=".4"
           />
-          <text x="280" y="52" className="funnel-label" fill="#fbbf24">
+          <text x="280" y="52" className="funnel-label" fill="var(--warning)">
             PENDING
           </text>
           <text x="280" y="84" className="funnel-value">
             {counts.pending}
           </text>
-          <text x="280" y="162" className="funnel-label" fill="#7dd3fc">
+          <text x="280" y="162" className="funnel-label" fill="var(--info)">
             ONGOING
           </text>
           <text x="280" y="194" className="funnel-value">
             {counts.ongoing}
           </text>
-          <text x="140" y="287" className="funnel-label" fill="#fda4af">
+          <text x="140" y="287" className="funnel-label" fill="var(--danger)">
             FAILED
           </text>
           <text x="140" y="317" className="funnel-value">
             {counts.failed}
           </text>
-          <text x="420" y="287" className="funnel-label" fill="#5eead4">
+          <text x="420" y="287" className="funnel-label" fill="var(--success)">
             SUCCESSFUL
           </text>
           <text x="420" y="317" className="funnel-value">

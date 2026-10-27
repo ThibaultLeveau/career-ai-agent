@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { captureThemes, expectTheme, setTheme } from "./theme";
 
 type ChatRequest = {
   message: string;
@@ -92,11 +93,15 @@ test("public homepage makes the conversation clear on desktop and mobile", async
   await page.goto("/");
   await expect(page).toHaveTitle(/Thibault Leveau/);
   await expect(page.getByRole("heading", { name: "Hi, I’m Thibault. Let’s talk about my work." })).toBeVisible();
-  await expect(page.getByText("AI assistant", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI assistant", { exact: true })).toHaveCount(0);
+  const brand = page.getByRole("link", { name: "Thibault Leveau, home" });
+  await expect(brand).toHaveText("Thibault Leveau");
+  await expect(brand.locator("svg")).toHaveCount(1);
+  await expect(page.locator(".portfolio-header small, .portfolio-footer, .chat-disclosure")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled();
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /admin/i })).toHaveCount(0);
-  await page.screenshot({ path: "test-results/portfolio-desktop.png", fullPage: true });
+  await captureThemes(page, "portfolio-desktop");
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await expect(page.getByRole("button", { name: "The career overview" })).toBeVisible();
@@ -104,7 +109,7 @@ test("public homepage makes the conversation clear on desktop and mobile", async
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "test-results/portfolio-mobile.png", fullPage: true });
+  await captureThemes(page, "portfolio-mobile");
 });
 
 test("parses fragmented UTF-8 and CRLF streams, shows sources, and sends completed history", async ({ page }) => {
@@ -132,7 +137,39 @@ test("parses fragmented UTF-8 and CRLF streams, shows sources, and sends complet
       { role: "assistant", content: "I build **useful tools** for café teams." },
     ],
   });
-  await page.screenshot({ path: "test-results/portfolio-conversation.png", fullPage: true });
+  await captureThemes(page, "portfolio-conversation");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await captureThemes(page, "portfolio-conversation-mobile");
+});
+
+test("theme changes preserve the draft and an active streamed reply", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockChat(page, [{
+    parts: ['event: delta\ndata: {"text":"I built a useful platform."}\n\n'],
+    open: true,
+  }]);
+  await page.goto("/");
+  const input = page.getByLabel("Ask about my career");
+  await input.fill("Tell me about your projects.");
+  await setTheme(page, "dark");
+  await expect(input).toHaveValue("Tell me about your projects.");
+  expect(await requests(page)).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page.locator(".answer-content")).toHaveText("I built a useful platform.");
+  await input.fill("What was your role on that project?");
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(page, theme);
+    await expectTheme(page, theme);
+    await expect(input).toHaveValue("What was your role on that project?");
+    await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+    await expect(page.locator(".answer-content")).toHaveText("I built a useful platform.");
+    expect(await requests(page)).toHaveLength(1);
+    expect(await page.evaluate(() => (window as unknown as Harness).chatAborts)).toBe(0);
+  }
+  await page.getByRole("button", { name: "Stop response" }).click();
+  expect(await page.evaluate(() => (window as unknown as Harness).chatAborts)).toBe(1);
+  expect(await requests(page)).toHaveLength(1);
+  await expect(input).toHaveValue("What was your role on that project?");
 });
 
 test("interrupted and error responses stay out of history and can be retried", async ({ page }) => {

@@ -2,6 +2,8 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   completedHistory,
   readChatStream,
@@ -199,12 +201,12 @@ export function CareerChat() {
       <a className="portfolio-skip" href="#chat-input">Skip to conversation</a>
       <header className="portfolio-header">
         <Link className="portfolio-brand" href="/" aria-label="Thibault Leveau, home" onClick={reset}>
-          <span className="portfolio-monogram" aria-hidden="true">tl<span>.</span></span>
-          <span>Thibault Leveau<small>A CAREER IN CONVERSATION</small></span>
+          <BrandMark className="portfolio-logo" />
+          <span>Thibault Leveau</span>
         </Link>
         <div className="portfolio-header-actions">
-          <span className="ai-label"><span aria-hidden="true" />AI assistant</span>
-          {turns.length > 0 && <button type="button" className="new-conversation" onClick={reset}>New conversation<span aria-hidden="true"> ↗</span></button>}
+          {turns.length > 0 && <button type="button" className="new-conversation" onClick={reset} aria-label="New conversation"><span className="new-conversation-label">New conversation</span><Arrow diagonal /></button>}
+          <ThemeToggle />
         </div>
       </header>
 
@@ -263,21 +265,23 @@ export function CareerChat() {
               }}
               maxLength={4000}
               rows={2}
-              aria-describedby="composer-hint"
+              aria-describedby={draft.length > 3500 ? "composer-count" : undefined}
             />
             <div className="composer-controls">
-              <span id="composer-hint">{draft.length > 3500 ? `${draft.length.toLocaleString()} / 4,000` : "A question is a great place to start."}</span>
+              {draft.length > 3500 && <span id="composer-count">{draft.length.toLocaleString()} / 4,000</span>}
               {busy ? (
-                <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={stop}><span aria-hidden="true" /></button>
+                <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={(event) => {
+                  // This button becomes Send during the click; prevent its submit action.
+                  event.preventDefault();
+                  stop();
+                }}><span aria-hidden="true" /></button>
               ) : (
                 <button type="submit" className="send-button" aria-label="Send message" disabled={!draft.trim()}><Arrow /></button>
               )}
             </div>
           </form>
-          <p className="chat-disclosure">My AI assistant answers from my career experience.<span> It may make mistakes.</span></p>
         </div>
       </main>
-      <footer className="portfolio-footer"><span>A little more personal than a résumé.</span><span>Made for a conversation.</span></footer>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     </div>
   );

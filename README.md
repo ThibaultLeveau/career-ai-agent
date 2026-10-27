@@ -31,6 +31,8 @@ The example credentials are for local development. Set database credentials and 
 
 ## Public career chat
 
+The public site and administration share light and dark themes. They follow the device preference initially; the sun/moon control remembers a manual choice across pages, reloads, and tabs. Theme changes preserve active conversations and unsaved forms. If browser storage is unavailable, switching still works for the current page session.
+
 The homepage identifies the chatbot as an AI representation of Thibault. It answers in first person and follows the visitor's language while the interface remains English. Suggested questions help recruiters start; follow-up questions use recent completed conversation turns and freshly retrieved evidence. Conversations remain in browser memory and reset on reload or **New conversation**. Interrupted replies are not sent back as completed history.
 
 The browser posts to a same-origin `/api/chat` proxy, which streams the API's `/chat` response without forwarding admin cookies. SSE `delta` events carry text; `done` carries source labels; `error` ends an interrupted response with a sanitized message. An unexpected end of stream is treated as interruption. Stop/reset cancels the request. Requests, conversation history, provider calls, reranking inputs, and expanded context are bounded. No provider credentials or retrieval controls reach the browser.
