@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { captureThemes, setTheme } from "./theme";
 
 const pdf = Buffer.concat([
   Buffer.from("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"),
@@ -31,6 +32,15 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
     "already exists",
   );
   await page.getByLabel("New skill keyword").fill("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(page, theme);
+    await page.getByRole("button", { name: "Actions for TypeScript", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Edit", exact: true })).toBeVisible();
+    await page.screenshot({ path: `test-results/content-menu-mobile-${theme}.png`, fullPage: true, animations: "disabled" });
+    await page.keyboard.press("Escape");
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page
     .getByRole("button", { name: "Actions for TypeScript", exact: true })
     .click();
@@ -86,10 +96,7 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await expect(page).toHaveURL(projectUrl);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByLabel("Outcomes")).toHaveValue("");
-  await page.screenshot({
-    path: "test-results/project-editor.png",
-    fullPage: true,
-  });
+  await captureThemes(page, "project-editor");
 
   await page.goto(jobUrl);
   await expect(
@@ -121,7 +128,7 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await page.getByLabel("Search projects").fill("absent");
   await expect(page.getByText("No matching projects.")).toBeVisible();
   await page.getByLabel("Search projects").fill("");
-  await page.screenshot({ path: "test-results/projects.png", fullPage: true });
+  await captureThemes(page, "projects");
   page.on("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", { name: "Actions for Search platform" })
@@ -219,10 +226,7 @@ test("uploads, renames, replaces, downloads, and deletes PDFs", async ({
   const chunks: Buffer[] = [];
   for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
   expect(Buffer.concat(chunks)).toEqual(replacement);
-  await page.screenshot({
-    path: "test-results/document-editor.png",
-    fullPage: true,
-  });
+  await captureThemes(page, "document-editor");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Updated resume" }).click();
   await expect(page).toHaveURL(/\/admin\/documents$/);
@@ -254,8 +258,5 @@ test("content navigation and forms fit mobile screens", async ({ page }) => {
     ).toBe(true);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: "test-results/content-mobile.png",
-    fullPage: true,
-  });
+  await captureThemes(page, "content-mobile");
 });

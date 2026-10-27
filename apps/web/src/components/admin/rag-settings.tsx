@@ -46,11 +46,58 @@ export function RAGSettings({ initial }: { initial: RagSettings }) {
             <div>
               <h2>Retrieval</h2>
               <p>
-                Control how many passages the future retrieval pipeline uses.
+                Choose how the career assistant finds and expands relevant
+                passages. These controls are private to your administration.
               </p>
             </div>
           </div>
           <div className="field-grid">
+            <label>
+              Search mode
+              <select
+                aria-label="Search mode"
+                value={values.retrieval.mode}
+                onChange={(event) =>
+                  setValues({
+                    ...values,
+                    retrieval: {
+                      ...values.retrieval,
+                      mode: event.target.value as "hybrid" | "semantic",
+                    },
+                  })
+                }
+              >
+                <option value="hybrid">Hybrid · meaning and keywords</option>
+                <option value="semantic">Semantic · meaning</option>
+              </select>
+              <small>
+                Hybrid combines semantic similarity with keyword matches.
+              </small>
+            </label>
+            <label>
+              Expansion window
+              <input
+                aria-label="Expansion window"
+                type="number"
+                required
+                min={0}
+                max={5}
+                value={values.retrieval.window_size}
+                onChange={(event) =>
+                  setValues({
+                    ...values,
+                    retrieval: {
+                      ...values.retrieval,
+                      window_size: Number(event.target.value),
+                    },
+                  })
+                }
+              />
+              <small>
+                Neighboring chunks to include on each side of a passage. Use 0
+                to turn expansion off.
+              </small>
+            </label>
             {(
               [
                 ["candidate_count", "Retrieval candidates", 100],

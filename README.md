@@ -1,6 +1,6 @@
 # Career AI
 
-An AI-powered personal portfolio with a public placeholder homepage and authenticated administration. The admin panel manages account credentials, encrypted OpenAI/Anthropic keys, and RAG configuration with provider connection tests. Jobs, projects, keyword skills, and resume PDFs can be managed in the admin panel. A durable background worker extracts text, chunks content, and stores embeddings. Public retrieval and chat are not implemented yet.
+An AI-powered personal portfolio with a public career chatbot and authenticated administration. Recruiters can ask about Thibault's experience, projects, and skills in a centered conversation with streamed answers and compact source labels. The admin panel manages career content, encrypted OpenAI/Anthropic keys, and RAG configuration. A durable background worker extracts text, chunks content, and stores embeddings for semantic or hybrid retrieval.
 
 ## Quick start
 
@@ -25,9 +25,21 @@ Open [administration](http://localhost:3000/admin) and sign in with the initial 
 
 `APP_ORIGIN` must match the exact browser origin, including the port (default `http://localhost:3000`). For HTTPS deployment, set it to the public HTTPS origin; session cookies then require HTTPS. Keep `SETTINGS_ENCRYPTION_KEY` stable and backed up with the database: replacing it prevents decryption of existing provider keys. Neither provider keys nor this encryption key belong in frontend environment variables.
 
-In **Settings → AI Provider**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Use **Settings → RAG** for retrieval counts and ingestion chunk size, overlap, and retry count. Retrieval counts configure the future retrieval service.
+In **Settings → AI Provider**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Use **Settings → RAG** for search mode, retrieval counts, neighboring-chunk expansion, and ingestion chunk size, overlap, and retry count.
 
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
+
+## Public career chat
+
+The public site and administration share light and dark themes. They follow the device preference initially; the sun/moon control remembers a manual choice across pages, reloads, and tabs. Theme changes preserve active conversations and unsaved forms. If browser storage is unavailable, switching still works for the current page session.
+
+The homepage identifies the chatbot as an AI representation of Thibault. It answers in first person and follows the visitor's language while the interface remains English. Suggested questions help recruiters start; follow-up questions use recent completed conversation turns and freshly retrieved evidence. Conversations remain in browser memory and reset on reload or **New conversation**. Interrupted replies are not sent back as completed history.
+
+The browser posts to a same-origin `/api/chat` proxy, which streams the API's `/chat` response without forwarding admin cookies. SSE `delta` events carry text; `done` carries source labels; `error` ends an interrupted response with a sanitized message. An unexpected end of stream is treated as interruption. Stop/reset cancels the request. Requests, conversation history, provider calls, reranking inputs, and expanded context are bounded. No provider credentials or retrieval controls reach the browser.
+
+Retrieval uses only published job, project, and document chunks compatible with the configured embedding model and dimensions. **Semantic** search uses cosine similarity; **Hybrid** (the default) combines semantic and PostgreSQL full-text ranks. Optional reranking uses the saved AI settings and falls back to retrieval order on failure. **Window size** adds that many adjacent chunks on each side of a selected match (default 1; 0 disables expansion), with overlapping windows deduplicated. Source labels identify the supplied context and optional PDF page ranges; they do not expose private document downloads or admin links.
+
+Choose a chat model and save the required provider keys before using chat. A usable corpus requires at least one successful ingestion with compatible embeddings. Empty or incompatible corpora produce a helpful unavailable response. A failed replacement ingestion leaves the previous published generation available; changing embedding model/dimensions requires re-ingestion before those sources can be searched with the new configuration. Retrieval-only changes take effect on subsequent questions and do not require re-ingestion. Existing configurations receive the new search/window defaults without a database migration.
 
 ## Career content
 

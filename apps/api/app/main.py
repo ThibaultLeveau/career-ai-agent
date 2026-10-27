@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.admin import router as admin_router
+from app.api.chat import router as chat_router
 from app.api.content import router as content_router
 from app.api.health import router
 from app.api.ingestion import router as ingestion_router
@@ -27,6 +28,7 @@ app.include_router(router)
 app.include_router(admin_router)
 app.include_router(content_router)
 app.include_router(ingestion_router)
+app.include_router(chat_router)
 app.add_middleware(UploadLimit)
 
 
@@ -35,6 +37,8 @@ async def private_responses(request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/admin"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path == "/chat":
+        response.headers["Cache-Control"] = "no-store, no-transform"
     return response
 
 

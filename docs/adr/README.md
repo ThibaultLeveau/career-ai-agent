@@ -8,3 +8,4 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 - [0003: Career content and PDF storage](0003-career-content.md) — Accepted
 - [0004: Durable RAG ingestion in PostgreSQL](0004-rag-ingestion.md) — Accepted
 - [0005: Skills as project metadata and current ingestion overview](0005-project-skill-ingestion.md) — Accepted
+- [0006: Public career chat and retrieval](0006-public-career-chat.md) — Accepted
