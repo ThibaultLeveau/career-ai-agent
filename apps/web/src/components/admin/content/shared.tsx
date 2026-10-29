@@ -14,10 +14,19 @@ export function useEditor<T>(initial: T, collection: string, id?: number) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetVersion, setResetVersion] = useState(0);
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
   useUnsavedChanges(dirty);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
+    const invalidText = Object.entries(values as Record<string, unknown>).some(
+      ([name, value]) => typeof value === "string" && Array.from(value).length > (name === "small_summary" ? 280 : 8000),
+    );
+    if (invalidText) {
+      setError("Shorten the fields marked over their character limit before saving.");
+      return;
+    }
     setBusy(true);
     setError("");
     setMessage("");
@@ -44,9 +53,11 @@ export function useEditor<T>(initial: T, collection: string, id?: number) {
     error,
     message,
     busy,
+    resetVersion,
     submit,
     reset: () => {
       setValues(saved);
+      setResetVersion((version) => version + 1);
       setError("");
       setMessage("");
     },
@@ -134,11 +145,15 @@ export function SaveBar({
   dirty,
   isNew,
   reset,
+  invalid = false,
+  saving = busy,
 }: {
   busy: boolean;
   dirty: boolean;
   isNew: boolean;
   reset: () => void;
+  invalid?: boolean;
+  saving?: boolean;
 }) {
   return (
     <div className="save-bar">
@@ -159,9 +174,9 @@ export function SaveBar({
       </button>
       <button
         className="button button-primary"
-        disabled={busy || (!isNew && !dirty)}
+        disabled={busy || invalid || (!isNew && !dirty)}
       >
-        {busy ? "Saving…" : isNew ? "Create" : "Save changes"}
+        {saving ? "Saving…" : isNew ? "Create" : "Save changes"}
       </button>
     </div>
   );

@@ -19,6 +19,13 @@ from app.content.schemas import (
     SkillInput,
     SkillOutput,
 )
+from app.content.summaries import (
+    SummaryGeneration,
+    SummaryInput,
+    SummaryOutput,
+    generate_summary,
+    prepare_generation,
+)
 from app.db import Base
 from app.ingestion.service import changed, enqueue, remove
 
@@ -28,6 +35,14 @@ router = APIRouter(
     dependencies=[Depends(check_origin), Depends(require_admin)],
 )
 MAX_PDF_SIZE = 10 * 1024 * 1024
+
+
+@router.post("/content/small-summary", response_model=SummaryOutput)
+async def small_summary(
+    data: SummaryInput,
+    prepared: Annotated[SummaryGeneration, Depends(prepare_generation)],
+) -> SummaryOutput:
+    return SummaryOutput(small_summary=await generate_summary(data.overview, prepared))
 
 
 def get_record[T: Base](model: type[T], record_id: int, db: Session) -> T:

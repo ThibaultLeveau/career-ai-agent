@@ -65,7 +65,7 @@ compose run --rm migrate
 
 verify_database() {
     test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_extension WHERE extname = 'vector'")" = "1"
-    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0005"
+    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0006"
 }
 
 verify_database

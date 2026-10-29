@@ -162,15 +162,17 @@ test("polling updates icons and disabled menu controls without discarding an edi
     page.getByRole("menuitem", { name: "Re-ingest" }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
+  await page.getByRole("group", { name: "Overview", exact: true })
+    .getByRole("button", { name: "Markdown", exact: true }).click();
   await page
-    .getByRole("textbox", { name: "Summary", exact: true })
+    .getByRole("textbox", { name: "Overview Markdown", exact: true })
     .fill("Keep this unsaved draft");
   status = "succeeded";
   await expect(
     page.getByRole("link", { name: "Ingested", exact: true }),
   ).toBeVisible({ timeout: 10000 });
   await expect(
-    page.getByRole("textbox", { name: "Summary", exact: true }),
+    page.getByRole("textbox", { name: "Overview Markdown", exact: true }),
   ).toHaveValue("Keep this unsaved draft");
   await page.getByRole("button", { name: "Actions for ingestion" }).click();
   await expect(page.getByRole("menuitem", { name: "Re-ingest" })).toBeEnabled();

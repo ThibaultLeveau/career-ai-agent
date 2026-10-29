@@ -14,3 +14,5 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 
 - [0009: Career boundary and criterion-based role fit](0009-career-boundary-and-role-fit.md)
 - [0010: Database-first answers and verified chat components](0010-verified-chat-components.md) — Accepted
+
+- [0011: Markdown content and compact career components](0011-markdown-and-compact-career-components.md) — Accepted

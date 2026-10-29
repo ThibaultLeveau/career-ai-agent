@@ -82,6 +82,7 @@ def snapshot(db: Session, request: ReadRequest) -> list[dict]:
             for field in (
                 "summary",
                 "description",
+                "contribution",
                 "outcomes",
                 "responsibilities",
                 "achievements",

@@ -373,6 +373,113 @@ function componentReply(components: unknown[], intro = "Here is how my recorded 
   return result;
 }
 
+test("agent selections show their scope and Show all expands once, including retries and pagination", async ({ page }) => {
+  const selected = [
+    { ...projectRecord(1), name: "DEKA" },
+    { ...projectRecord(2), name: "DAISI DOC" },
+  ];
+  const scoped = { ...projectList(), token: "selected-projects", total: 2, matched_total: 2,
+    filtered: true, unfiltered_total: 7, scope_label: "", items: selected };
+  await mockChat(page, [componentReply([scoped], "My two related projects are DEKA and DAISI DOC.")]);
+  const navigation: { token: string; filter: string; page: number; show_all: boolean }[] = [];
+  let expansionAttempts = 0;
+  let completeExpansion!: () => void;
+  const expansionReady = new Promise<void>((resolve) => { completeExpansion = resolve; });
+  await page.route("**/api/chat/components/page", async (route) => {
+    const request = route.request().postDataJSON();
+    navigation.push(request);
+    if (request.show_all && ++expansionAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: "Unavailable" } });
+    } else if (request.show_all || request.token === "all-projects") {
+      if (request.show_all) await expansionReady;
+      await route.fulfill({ json: { ...projectList(request.show_all ? 1 : request.page), token: "all-projects", filtered: false, unfiltered_total: 7 } });
+    } else {
+      await route.fulfill({ json: { ...scoped, filter: request.filter, matched_total: 1, items: [selected[0]] } });
+    }
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  const list = page.getByRole("region", { name: "Projects list", exact: true });
+  await expect(list.getByText("Filtered · 2 of 7 projects")).toBeVisible();
+  await expect(list.getByRole("button", { name: /^Know more about/ })).toHaveCount(2);
+  await list.getByLabel("Filter projects").fill("DEKA");
+  await expect(list.getByText("Filtered · 1 of 7 projects")).toBeVisible();
+  await list.getByRole("button", { name: "Show all", exact: true }).click();
+  await expect(list.getByRole("alert")).toBeVisible();
+  await list.getByRole("button", { name: "Try again" }).click();
+  await expect(list.getByLabel("Filter projects")).toBeDisabled();
+  completeExpansion();
+  await expect(list.getByRole("status")).toHaveText("1–5 of 7");
+  await expect(list.getByLabel("Filter projects")).toHaveValue("");
+  await expect(list.getByRole("button", { name: "Show all", exact: true })).toHaveCount(0);
+  await list.getByRole("button", { name: "Next" }).click();
+  await expect(list.getByRole("status")).toHaveText("6–7 of 7");
+  expect(navigation[1]).toEqual({ token: "selected-projects", filter: "", page: 1, show_all: true });
+  expect(navigation[2]).toEqual(navigation[1]);
+  expect(navigation[3]).toEqual({ token: "all-projects", filter: "", page: 2, show_all: false });
+  expect((await requests(page)).length).toBe(1);
+});
+
+test("detail narratives are independent accessible sections with safe Markdown and visible links", async ({ page }) => {
+  const card = { type: "project_card", record: { ...projectRecord(1),
+    summary: "An **engineering** overview.", description: "A project description.",
+    contribution: "- Built the **search pipeline**\n- Added [documentation](https://example.com/docs)\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert(1))",
+    outcomes: "", website_url: "https://example.com", repository_url: "https://github.com/example/project",
+    small_summary: "This list-only summary must never appear." } };
+  const job = { type: "job_card", record: { ...jobRecord(1), responsibilities: "Owned the delivery.", achievements: "Improved reliability." } };
+  await mockChat(page, [componentReply([card, job])]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  const detail = page.getByRole("region", { name: "Project 1 project card" });
+  const overview = detail.locator("details").filter({ has: page.locator("summary", { hasText: "Overview" }) });
+  const contribution = detail.locator("details").filter({ has: page.locator("summary", { hasText: "My contribution" }) });
+  await expect(overview).toHaveAttribute("open", "");
+  await expect(contribution).not.toHaveAttribute("open", "");
+  await expect(contribution.getByText("search pipeline", { exact: true })).not.toBeVisible();
+  await contribution.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(contribution.getByText("search pipeline", { exact: true })).toBeVisible();
+  await expect(contribution.getByRole("listitem")).toHaveCount(2);
+  await expect(overview).toHaveAttribute("open", "");
+  await expect(detail.getByText("Outcomes", { exact: true })).toHaveCount(0);
+  await expect(detail.getByText("This list-only summary must never appear.")).toHaveCount(0);
+  await expect(detail.getByRole("link", { name: "Website" })).toHaveAttribute("href", "https://example.com");
+  await expect(detail.getByRole("link", { name: "Repository" })).toBeVisible();
+  await expect(detail.locator("script, a[href^='javascript:']")).toHaveCount(0);
+  await expect(detail.getByLabel("Associated skills")).toBeVisible();
+  const jobDetail = page.getByRole("region", { name: "Software engineer 1 job card" });
+  await expect(jobDetail.getByText("Owned the delivery.", { exact: true })).not.toBeVisible();
+  await jobDetail.locator("summary", { hasText: "Responsibilities" }).click();
+  await expect(jobDetail.getByText("Owned the delivery.", { exact: true })).toBeVisible();
+  await captureThemes(page, "chat-collapsible-details");
+});
+
+test("compact lists place dates under titles, widen experience, and cap summaries at four lines", async ({ page }) => {
+  const data = { ...projectList(), items: [
+    { ...projectRecord(1), summary: "Delivered reliable engineering tools and searchable documentation for internal teams. ".repeat(3).slice(0, 280) },
+    { ...projectRecord(2), summary: "" },
+  ], total: 2, matched_total: 2, scope_label: "Projects from this experience" };
+  await mockChat(page, [componentReply([data])]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  const list = page.getByRole("region", { name: "Projects list", exact: true });
+  await expect(list.getByText("Projects from this experience")).toBeVisible();
+  await expect(list.getByRole("columnheader")).toHaveText(["Project", "Experience", "Summary"]);
+  await expect(list.locator("tbody").first().locator("td").first()).toContainText("Jan 2024 – Present");
+  const widths = await list.getByRole("columnheader").evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width));
+  expect(widths[1] / widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(0.3, 1);
+  await expect(list.locator("tbody").nth(1).locator(".career-row-summary")).toHaveCount(0);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const sizing = await list.locator(".career-row-summary").evaluate((element) => ({
+      height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+    }));
+    expect(sizing.height).toBeLessThanOrEqual(sizing.lineHeight * 4 + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await captureThemes(page, `chat-compact-list-${width}`);
+  }
+});
+
 test("project lists paginate and filter all matches without AI, then open a grounded card", async ({ page }) => {
   const card = { type: "project_card", record: { ...projectRecord(7), description: "A carefully planned migration with a gradual rollout.", outcomes: "Improved reliability and reduced support work." } };
   const first = componentReply([projectList()]);

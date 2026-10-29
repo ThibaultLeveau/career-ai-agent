@@ -23,13 +23,16 @@ type ListPage = {
   page: number;
   page_size: number;
   filter: string;
+  filtered?: boolean;
+  unfiltered_total?: number | null;
+  scope_label?: string;
 };
 export type ProjectListData = ListPage & { type: "project_list"; items: ProjectRow[] };
 export type JobListData = ListPage & { type: "job_list"; items: JobRow[] };
 export type CareerListData = ProjectListData | JobListData;
 export type ProjectCardData = {
   type: "project_card";
-  record: ProjectRow & { description: string; outcomes: string };
+  record: ProjectRow & { description: string; outcomes: string; contribution?: string; website_url?: string; repository_url?: string };
 };
 export type JobCardData = {
   type: "job_card";
@@ -72,11 +75,18 @@ function job(value: unknown): value is JobRow {
 export function isChatComponent(value: unknown): value is ChatComponent {
   if (!object(value)) return false;
   if (value.type === "project_card") return object(value.record)
-    && text(value.record.description, 8000) && text(value.record.outcomes, 8000) && project(value.record);
+    && text(value.record.description, 8000) && text(value.record.outcomes, 8000)
+    && (value.record.contribution === undefined || text(value.record.contribution, 8000))
+    && (value.record.website_url === undefined || text(value.record.website_url, 2048))
+    && (value.record.repository_url === undefined || text(value.record.repository_url, 2048))
+    && project(value.record);
   if (value.type === "job_card") return object(value.record)
     && text(value.record.responsibilities, 8000) && text(value.record.achievements, 8000) && job(value.record);
   if (value.type !== "project_list" && value.type !== "job_list") return false;
   return text(value.token, 240000, 1) && integer(value.total, 0, 10000)
+    && (value.filtered === undefined || typeof value.filtered === "boolean")
+    && (value.unfiltered_total === undefined || value.unfiltered_total === null || integer(value.unfiltered_total, 0))
+    && (value.scope_label === undefined || text(value.scope_label, 200))
     && integer(value.matched_total, 0, value.total as number) && integer(value.page_size, 1, 20)
     && integer(value.page, 1, Math.max(1, Math.ceil((value.matched_total as number) / (value.page_size as number))))
     && text(value.filter, 200) && Array.isArray(value.items) && value.items.length <= (value.page_size as number)

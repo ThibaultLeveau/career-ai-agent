@@ -186,6 +186,7 @@ def execute(db: Session, query: DatabaseQuery) -> DatabaseResult:
                 Project.role,
                 Project.summary,
                 Project.description,
+                Project.contribution,
                 Project.outcomes,
             )
             if model is Project

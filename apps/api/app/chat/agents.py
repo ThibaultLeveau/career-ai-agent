@@ -147,9 +147,13 @@ bullets, numbered lists, or Markdown tables to suit the question. Counts must co
 from exact database results; state what was counted. For Markdown pages, distinguish
 the displayed subset from the total. Reusable lists display their own live page range;
 never write a static page range for those components in prose or introductions.
-For a paginated exact list, use only the database page's records. Do not add projects
-from another page or from a parent job's narrative. Job context never qualifies an
-otherwise unmatched sibling project.
+For prose-only database pages, describe only that page's records. Reusable components
+have a verified selected collection across pages: align named examples with the
+following_components selection, not a broader research result. Its selected_total
+counts the selection, not all matching experience. If records_complete is false,
+selected_records is only a label preview, not the whole selection. Substantive claims
+still require research evidence. Never add projects from a parent job's narrative;
+job context never qualifies an otherwise unmatched sibling project.
 Keep jobs and projects distinct. Clearly separate related alternatives from exact
 matches. For factual exact queries, state the original zero result before alternatives.
 Describe missing tags as no matching recorded projects, not proof of no experience.
@@ -1057,20 +1061,21 @@ class Run:
                             "role": "user",
                             "content": json.dumps(
                                 {
-                                    "following_components": [
-                                        {
-                                            "type": view.component.type,
-                                            "introduction": view.introduction,
-                                        }
-                                        for view in views
-                                    ],
+                                    "following_components": await run_in_threadpool(
+                                        presentation.context, views
+                                    ),
                                     "instructions": (
                                         "These verified components and introductions "
                                         "will follow your prose. Give a short direct "
                                         "answer and relevant interpretation. Do not "
                                         "duplicate introductions, lists or tables. "
-                                        "The lists include all matches with pagination "
-                                        "and filtering, not just the initial five rows."
+                                        "Each list contains exactly its selected "
+                                        "records, across all pages. Align named "
+                                        "examples with that selection, not the "
+                                        "broader research results. selected_total "
+                                        "is the selection count, not proof of all "
+                                        "matching career experience. Visitors can "
+                                        "explicitly show all records themselves."
                                     ),
                                 },
                                 ensure_ascii=False,

@@ -13,6 +13,8 @@ import {
   useEditor,
 } from "./shared";
 import { SkillPicker } from "./skill-picker";
+import { MARKDOWN_LIMIT, SMALL_SUMMARY_LIMIT, MarkdownField, characterCount } from "./markdown-field";
+import { SmallSummaryField } from "./small-summary-field";
 
 export function ProjectForm({
   project,
@@ -26,6 +28,7 @@ export function ProjectForm({
   jobId?: number;
 }) {
   const [creatingSkill, setCreatingSkill] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const editor = useEditor<ProjectInput>(
     {
       name: project?.name ?? "",
@@ -34,7 +37,9 @@ export function ProjectForm({
       end_month: project?.end_month ?? null,
       ongoing: project?.ongoing ?? false,
       summary: project?.summary ?? "",
+      small_summary: project?.small_summary ?? "",
       description: project?.description ?? "",
+      contribution: project?.contribution ?? "",
       outcomes: project?.outcomes ?? "",
       website_url: project?.website_url ?? "",
       repository_url: project?.repository_url ?? "",
@@ -45,19 +50,18 @@ export function ProjectForm({
     project?.id,
   );
   const { values, setValues } = editor;
+  const busy = editor.busy || creatingSkill || generating;
+  const invalid = [values.summary, values.description, values.contribution, values.outcomes].some((value) => characterCount(value) > MARKDOWN_LIMIT) || characterCount(values.small_summary) > SMALL_SUMMARY_LIMIT;
   const field = (
     name:
       | "name"
       | "role"
-      | "summary"
-      | "description"
-      | "outcomes"
       | "website_url"
       | "repository_url",
   ) => ({
     value: values[name],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setValues({ ...values, [name]: e.target.value }),
+      setValues((current) => ({ ...current, [name]: e.target.value })),
   });
   return (
     <>
@@ -68,9 +72,9 @@ export function ProjectForm({
           initial={project.ingestion}
         />
       )}
-      <form onSubmit={editor.submit}>
+      <form onSubmit={(event) => { if (creatingSkill || generating) event.preventDefault(); else void editor.submit(event); }}>
         <fieldset
-          disabled={editor.busy || creatingSkill}
+          disabled={busy}
           className="settings-section content-form"
         >
           <div className="field-grid">
@@ -104,9 +108,11 @@ export function ProjectForm({
             value={values}
             onChange={(change) => setValues({ ...values, ...change })}
           />
-          <Field label="Summary" multiline {...field("summary")} />
-          <Field label="Description" multiline {...field("description")} />
-          <Field label="Outcomes" multiline {...field("outcomes")} />
+          <MarkdownField key={`overview-${editor.resetVersion}`} label="Overview" value={values.summary} disabled={busy} onChange={(summary) => setValues((current) => ({ ...current, summary }))} />
+          <SmallSummaryField key={`small-summary-${editor.resetVersion}`} value={values.small_summary} overview={values.summary} disabled={busy} onBusyChange={setGenerating} onChange={(small_summary) => setValues((current) => ({ ...current, small_summary }))} />
+          <MarkdownField key={`description-${editor.resetVersion}`} label="Description" value={values.description} disabled={busy} onChange={(description) => setValues((current) => ({ ...current, description }))} />
+          <MarkdownField key={`contribution-${editor.resetVersion}`} label="My contribution" value={values.contribution} disabled={busy} onChange={(contribution) => setValues((current) => ({ ...current, contribution }))} />
+          <MarkdownField key={`outcomes-${editor.resetVersion}`} label="Outcomes" value={values.outcomes} disabled={busy} onChange={(outcomes) => setValues((current) => ({ ...current, outcomes }))} />
           <div className="field-grid">
             <Field
               label="Website URL"
@@ -131,7 +137,9 @@ export function ProjectForm({
         <Notice error>{editor.error}</Notice>
         <Notice>{editor.message}</Notice>
         <SaveBar
-          busy={editor.busy || creatingSkill}
+          busy={busy}
+          saving={editor.busy}
+          invalid={invalid}
           dirty={editor.dirty}
           isNew={!project}
           reset={editor.reset}
