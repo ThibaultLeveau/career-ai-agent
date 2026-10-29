@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from app.admin.models import Administrator, AdminSession, ProviderKey, RagConfiguration
 from app.admin.providers import test_connection
 from app.admin.schemas import (
+    Agents,
     ConnectionTest,
     Credentials,
     KeyInput,
@@ -141,6 +142,11 @@ def remove_key(provider: Provider, administrator: Admin, db: Database) -> None:
 def read_settings(administrator: Admin, db: Database) -> RagSettings:
     saved = db.get(RagConfiguration, 1)
     return RagSettings.model_validate(saved.configuration) if saved else RagSettings()
+
+
+@router.get("/agents/defaults", response_model=Agents)
+def agent_defaults(administrator: Admin) -> Agents:
+    return Agents()
 
 
 @router.put("/settings", response_model=RagSettings)

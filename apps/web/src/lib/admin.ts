@@ -5,7 +5,12 @@ export type Generation = {
   model: string;
   max_output_tokens: number;
 };
+export type AgentRole = "query_analyzer" | "database" | "rag" | "representative";
+export type AgentSettings = { prompt: string; generation: Generation | null };
+export type AgentsSettings = Record<AgentRole, AgentSettings> & { enabled: boolean };
 export type RagSettings = {
+  chat_components: { project_list_page_size: number; job_list_page_size: number };
+  agents: AgentsSettings;
   chat: Generation & { system_prompt: string };
   embeddings: {
     provider: "openai";

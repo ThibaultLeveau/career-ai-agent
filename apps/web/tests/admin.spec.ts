@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { captureThemes, setTheme } from "./theme";
+import type { AgentsSettings, RagSettings } from "../src/lib/admin";
 
 const username = process.env.ADMIN_INITIAL_USERNAME!;
 const password = process.env.ADMIN_INITIAL_PASSWORD!;
@@ -288,5 +289,112 @@ test("mobile navigation opens, traps focus, and closes", async ({ page }) => {
       expect(sidebar!.width).toBe(200);
       expect(sidebar!.x + sidebar!.width).toBe(content!.x);
     }
+  }
+});
+
+test("agents settings persist independently and support prompt reset and unsaved changes", async ({ page }) => {
+  await login(page);
+  const original = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+  const defaults = await (await page.request.get("/api/admin/agents/defaults")).json() as AgentsSettings;
+  const origin = new URL(page.url()).origin;
+  try {
+    await page.goto("/admin/settings/agents");
+    await expect(page.getByRole("link", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.locator(".admin-topbar")).toContainText("Settings / Agents");
+    const analyzer = page.getByRole("region", { name: "Query Analyzer", exact: true });
+    await page.getByRole("switch", { name: "Enable agentic mode" }).setChecked(!original.agents.enabled);
+    const customPrompt = `${defaults.query_analyzer.prompt}\nPrefer concise comparisons.`;
+    await page.getByLabel("Query Analyzer prompt", { exact: true }).fill(customPrompt);
+    await page.getByLabel("Use a different model for Query Analyzer", { exact: true }).check();
+    await analyzer.getByRole("combobox", { name: "Provider", exact: true }).selectOption("openai");
+    await analyzer.getByRole("combobox", { name: "Model", exact: true }).fill("test-agent-model");
+    await analyzer.getByLabel("Maximum output tokens", { exact: true }).fill("4096");
+    const patch = page.waitForRequest((request) => request.url().endsWith("/api/admin/settings") && request.method() === "PATCH");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    expect(Object.keys((await patch).postDataJSON())).toEqual(["agents"]);
+    await expect(page.getByRole("status")).toContainText("Agent settings saved.");
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Enable agentic mode" })).toBeChecked({ checked: !original.agents.enabled });
+    await expect(page.getByLabel("Query Analyzer prompt", { exact: true })).toHaveValue(customPrompt);
+    await expect(analyzer.getByRole("combobox", { name: "Model", exact: true })).toHaveValue("test-agent-model");
+    const updated = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+    expect(updated.chat).toEqual(original.chat);
+    expect(updated.retrieval).toEqual(original.retrieval);
+    expect(updated.agents.query_analyzer.generation?.max_output_tokens).toBe(4096);
+    await page.getByRole("button", { name: "Reset Query Analyzer prompt", exact: true }).click();
+    await expect(page.getByLabel("Query Analyzer prompt", { exact: true })).toHaveValue(defaults.query_analyzer.prompt);
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("link", { name: "RAG", exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/settings\/agents$/);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByLabel("Query Analyzer prompt", { exact: true })).toHaveValue(customPrompt);
+    await page.getByLabel("Use a different model for Query Analyzer", { exact: true }).uncheck();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Agent settings saved.");
+    const inherited = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+    expect(inherited.agents.query_analyzer.generation).toBeNull();
+    await captureThemes(page, "agents-settings");
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await captureThemes(page, "agents-settings-mobile");
+  } finally {
+    await page.request.patch("/api/admin/settings", { headers: { Origin: origin }, data: { agents: original.agents } });
+  }
+});
+
+test("agent connection tests use draft prompts and models without saving", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/settings/agents");
+  const original = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+  const roles = [
+    ["query_analyzer", "Query Analyzer"], ["database", "Database"],
+    ["rag", "RAG"], ["representative", "Thibault Representative"],
+  ] as const;
+  for (const [id, name] of roles) {
+    let draft: RagSettings | undefined;
+    await page.route(`**/api/admin/test/${id}`, async (route) => {
+      draft = route.request().postDataJSON().settings as RagSettings;
+      await route.fulfill({ json: { ok: true, message: `${name} model connected.` } });
+    });
+    const section = page.getByRole("region", { name, exact: true });
+    await page.getByLabel(`${name} prompt`, { exact: true }).fill(`Draft instructions for ${name}.`);
+    await page.getByLabel(`Use a different model for ${name}`, { exact: true }).check();
+    await section.getByRole("combobox", { name: "Model", exact: true }).fill("draft-model");
+    await page.getByRole("button", { name: `Test ${name}`, exact: true }).click();
+    await expect(section.getByRole("status")).toHaveText(`${name} model connected.`);
+    expect(draft?.agents[id].prompt).toBe(`Draft instructions for ${name}.`);
+    expect(draft?.agents[id].generation?.model).toBe("draft-model");
+  }
+  const after = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+  expect(after.agents).toEqual(original.agents);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+});
+
+test("chat component page sizes persist independently without changing other settings", async ({ page }) => {
+  await login(page);
+  const original = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+  const origin = new URL(page.url()).origin;
+  try {
+    await page.goto("/admin/settings/chat-components");
+    await expect(page.getByRole("heading", { name: "Chat components", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Chat components", exact: true })).toHaveAttribute("aria-current", "page");
+    await page.getByLabel("Projects per page").fill("3");
+    await page.getByLabel("Jobs per page").fill("7");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("status")).toContainText("Chat component settings saved.");
+    await page.reload();
+    await expect(page.getByLabel("Projects per page")).toHaveValue("3");
+    await expect(page.getByLabel("Jobs per page")).toHaveValue("7");
+    const after = await (await page.request.get("/api/admin/settings")).json() as RagSettings;
+    expect(after).toEqual({ ...original, chat_components: { project_list_page_size: 3, job_list_page_size: 7 } });
+    await page.getByLabel("Projects per page").fill("21");
+    expect(await page.getByLabel("Projects per page").evaluate((node: HTMLInputElement) => node.validity.valid)).toBe(false);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await captureThemes(page, "chat-components-settings");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await captureThemes(page, "chat-components-settings-mobile");
+  } finally {
+    await page.request.patch("/api/admin/settings", { headers: { Origin: origin }, data: { chat_components: original.chat_components } });
   }
 });

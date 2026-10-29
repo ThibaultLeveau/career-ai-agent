@@ -6,12 +6,34 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.admin.models import ProviderKey
-from app.admin.schemas import ConnectionTest, Stage, TestResult
+from app.admin.schemas import ConnectionTest, Stage, TestResult, agent_generation
 from app.admin.security import cipher
+from app.chat.agent_prompts import DEFAULT_AGENT_PROMPTS
+from app.chat.providers import ChatError, parse_tool_turn, request, tool_request
+from app.chat.query_catalog import catalog
+from app.chat.query_engine import Compiler
+from app.chat.query_schema import DatabaseRequest
+
+CAPABILITY_TOOL = {
+    "name": "capability_probe",
+    "description": "Verify native tool calling by returning the requested value.",
+    "parameters": {
+        "type": "object",
+        "properties": {"value": {"type": "string", "enum": ["OK"]}},
+        "required": ["value"],
+        "additionalProperties": False,
+    },
+}
 
 
 def test_connection(stage: Stage, data: ConnectionTest, db: Session) -> TestResult:
-    settings = getattr(data.settings, stage)
+    is_agent = stage in DEFAULT_AGENT_PROMPTS
+    needs_tools = is_agent
+    settings = (
+        agent_generation(data.settings, stage)
+        if is_agent
+        else getattr(data.settings, stage)
+    )
     key = data.key.get_secret_value() if data.key else None
     if not key:
         saved = db.get(ProviderKey, settings.provider)
@@ -31,7 +53,39 @@ def test_connection(stage: Stage, data: ConnectionTest, db: Session) -> TestResu
             "Return only a JSON array containing both passage IDs, best match first. "
             "Passage 1: Growing tomatoes. Passage 2: Writing Python software."
         )
-    if stage == "embeddings":
+    if is_agent:
+        messages = [{"role": "user", "content": prompt}]
+        instructions = getattr(data.settings.agents, stage).prompt
+        test_settings = settings.model_copy(
+            update={"max_output_tokens": min(settings.max_output_tokens, 2048)}
+        )
+        if needs_tools:
+            capability = CAPABILITY_TOOL
+            messages[0]["content"] = (
+                'This is a capability test. Call capability_probe with value "OK".'
+            )
+            if stage == "database":
+                capability = {
+                    "name": "query_database",
+                    "description": "Validate a career query without executing it.",
+                    "parameters": DatabaseRequest.model_json_schema(),
+                }
+                messages[0]["content"] = (
+                    "Capability test: use query_database operation=query to rank all "
+                    "skills by distinct project count including unused skills. "
+                    "Use the career catalog: " + json.dumps(catalog())
+                )
+            url, headers, body = tool_request(
+                test_settings,
+                key,
+                messages,
+                instructions,
+                [capability],
+                tool_choice="required",
+            )
+        else:
+            url, headers, body = request(test_settings, key, messages, instructions)
+    elif stage == "embeddings":
         url = "https://api.openai.com/v1/embeddings"
         headers = {"Authorization": f"Bearer {key}"}
         body = {
@@ -78,7 +132,22 @@ def test_connection(stage: Stage, data: ConnectionTest, db: Session) -> TestResu
         raise HTTPException(502, message)
     try:
         result = response.json()
-        if stage == "embeddings":
+        if needs_tools:
+            turn = parse_tool_turn(settings.provider, result)
+            if stage == "database":
+                if len(turn.calls) != 1 or turn.calls[0].name != "query_database":
+                    raise ValueError
+                probe = DatabaseRequest.model_validate(turn.calls[0].arguments)
+                if probe.operation != "query":
+                    raise ValueError
+                Compiler(probe.query, []).statement()
+            elif (
+                len(turn.calls) != 1
+                or turn.calls[0].name != "capability_probe"
+                or turn.calls[0].arguments != {"value": "OK"}
+            ):
+                raise ValueError
+        elif stage == "embeddings":
             vector = result["data"][0]["embedding"]
             if len(vector) != settings.dimensions or not all(
                 isinstance(n, (float, int)) for n in vector
@@ -97,7 +166,7 @@ def test_connection(stage: Stage, data: ConnectionTest, db: Session) -> TestResu
                 ranking = json.loads(output.removeprefix("```json").removesuffix("```"))
                 if ranking != [2, 1]:
                     raise ValueError
-    except AttributeError, KeyError, IndexError, TypeError, ValueError:
+    except AttributeError, KeyError, IndexError, TypeError, ValueError, ChatError:
         raise HTTPException(
             502, "The provider responded, but the capability test did not pass"
         ) from None

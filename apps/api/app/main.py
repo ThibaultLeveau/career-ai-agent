@@ -37,7 +37,7 @@ async def private_responses(request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/admin"):
         response.headers["Cache-Control"] = "no-store"
-    elif request.url.path == "/chat":
+    elif request.url.path == "/chat" or request.url.path.startswith("/chat/"):
         response.headers["Cache-Control"] = "no-store, no-transform"
     return response
 

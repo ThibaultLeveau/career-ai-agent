@@ -1,6 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { expectTheme } from "./theme";
 
+test("public chat and admin share the complete dark palette while keeping their light themes", async ({ page }) => {
+  const palette = async (selector: string) => page.locator(selector).evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return Object.fromEntries([
+      "background", "background-transparent", "surface", "surface-raised", "surface-subtle",
+      "surface-hover", "text", "text-secondary", "text-muted", "border", "border-strong",
+      "accent", "accent-hover", "accent-soft", "on-accent", "focus", "danger", "danger-soft",
+      "success", "success-soft", "warning", "warning-soft", "info", "info-soft", "overlay", "shadow",
+    ].map((name) => [name, styles.getPropertyValue(`--${name}`).trim()]));
+  });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await expectTheme(page, "dark");
+  const chat = await palette(".portfolio");
+  expect(chat.background).toBe("#101114");
+  expect(chat.accent).toBe("#b0b8ff");
+  await page.goto("/admin");
+  await expectTheme(page, "dark");
+  expect(await palette(".admin")).toEqual(chat);
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  expect((await palette(".admin")).accent).toBe("#505bc5");
+  await page.goto("/");
+  await expectTheme(page, "light");
+  expect((await palette(".portfolio")).accent).toBe("#376456");
+});
+
 test("follows system changes until a manual choice and keeps that choice across navigation", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");

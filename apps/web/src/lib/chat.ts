@@ -1,3 +1,5 @@
+import { componentReferences, isComponentEvent, type ChatBlock, type ComponentEvent, type ComponentReference, type DetailAction } from "./chat-components";
+
 export type ChatSource = {
   id: string;
   label: string;
@@ -10,12 +12,17 @@ export type ChatTurn = {
   id: number;
   question: string;
   answer: string;
+  blocks: ChatBlock[];
+  action?: DetailAction;
   status: "pending" | "complete" | "stopped" | "error";
   sources: ChatSource[];
   error?: string;
+  activity?: ChatActivity;
 };
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatActivity = { stage: string; message: string };
+
+type ChatMessage = { role: "user" | "assistant"; content: string; components?: ComponentReference[] };
 
 export function completedHistory(turns: ChatTurn[]): ChatMessage[] {
   const pairs = turns
@@ -23,7 +30,13 @@ export function completedHistory(turns: ChatTurn[]): ChatMessage[] {
     .slice(-4)
     .map((turn): ChatMessage[] => [
       { role: "user", content: turn.question },
-      { role: "assistant", content: turn.answer.slice(0, 8000) },
+      {
+        role: "assistant", content: turn.answer.slice(0, 8000),
+        ...(turn.blocks.some((block) => block.type === "component") ? {
+          components: turn.blocks.flatMap((block) => block.type === "component"
+            ? componentReferences(block.component) : []).slice(0, 80),
+        } : {}),
+      },
     ]);
   while (
     pairs.flat().reduce((total, message) => total + message.content.length, 0) >
@@ -51,6 +64,8 @@ function isSource(value: unknown): value is ChatSource {
 export async function readChatStream(
   response: Response,
   onDelta: (text: string) => void,
+  onStatus?: (activity: ChatActivity) => void,
+  onComponent?: (component: ComponentEvent) => void,
 ): Promise<ChatSource[]> {
   if (
     !response.body ||
@@ -82,6 +97,16 @@ export async function readChatStream(
         const item = payload as Record<string, unknown>;
         if (event === "delta" && typeof item.text === "string") {
           onDelta(item.text);
+        } else if (event === "component" && isComponentEvent(item)) {
+          onComponent?.(item);
+        } else if (
+          event === "status" &&
+          typeof item.stage === "string" &&
+          item.stage.length > 0 && item.stage.length <= 64 &&
+          typeof item.message === "string" &&
+          item.message.length > 0 && item.message.length <= 500
+        ) {
+          onStatus?.({ stage: item.stage, message: item.message });
         } else if (
           event === "done" &&
           Array.isArray(item.sources) &&

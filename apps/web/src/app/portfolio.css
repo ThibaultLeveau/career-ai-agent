@@ -23,7 +23,7 @@
 .portfolio-header-actions { display: flex; align-items: center; gap: 18px; }
 .new-conversation { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; font-size: 12px !important; padding: 7px 0; border: 0; background: transparent; color: var(--accent); }
 .new-conversation:hover { text-decoration: underline; text-underline-offset: 4px; }
-.chat-main { width: min(720px, calc(100% - 48px)); margin: auto; padding: 36px 0 110px; }
+.chat-main { width: min(920px, calc(100% - 48px)); margin: auto; padding: 36px 0 110px; }
 .chat-welcome { text-align: center; padding: 20px 0 30px; }
 .welcome-mark { color: var(--accent); display: block; font-size: 48px; line-height: 1; font-weight: 400; margin-bottom: 27px; }
 .chat-eyebrow { color: var(--text-muted); font-size: 9px; font-weight: 600; letter-spacing: 2.5px; margin: 0 0 16px; }
@@ -60,7 +60,19 @@
 .answer-content strong { color: var(--text); font-weight: 600; }
 .answer-content code { background: var(--surface-subtle); border-radius: 4px; padding: 1px 4px; font-size: .9em; }
 .answer-content ul { list-style: disc; padding-left: 22px; margin: 12px 0; }
+.answer-content ol { list-style: decimal; padding-left: 22px; margin: 12px 0; }
 .answer-content li + li { margin-top: 5px; }
+.answer-content h1, .answer-content h2, .answer-content h3, .answer-content h4, .answer-content h5, .answer-content h6 { color: var(--text); font-size: 1.1em; font-weight: 600; line-height: 1.5; margin: 22px 0 10px; }
+.answer-content > :first-child { margin-top: 0; }
+.answer-content a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.answer-content pre { max-width: 100%; overflow-x: auto; padding: 14px; background: var(--surface-subtle); border-radius: 8px; }
+.answer-content pre code { padding: 0; }
+.answer-content blockquote { border-left: 2px solid var(--border-strong); padding-left: 16px; margin: 14px 0; }
+.answer-table { width: 100%; max-width: 100%; overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: 8px; }
+.answer-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.answer-table th, .answer-table td { min-width: 110px; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.answer-table th { background: var(--surface-subtle); color: var(--text); font-weight: 600; }
+.answer-table tr:last-child td { border-bottom: 0; }
 .thinking { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: 12px; margin: 10px 0 0; }
 .thinking > span { color: var(--accent); letter-spacing: 1px; animation: thinking-pulse 1.6s ease-in-out infinite; }
 .chat-sources { margin-top: 18px; font-size: 11px; color: var(--text-muted); }
@@ -75,6 +87,79 @@
 .retry-response { background: transparent; border: 0; padding: 5px 0; color: var(--accent); font-size: 12px !important; margin-top: 5px; }
 .retry-response:hover { text-decoration: underline; text-underline-offset: 3px; }
 .has-conversation .composer-area { position: sticky; bottom: 0; z-index: 2; padding: 18px 0 16px; background: linear-gradient(var(--background-transparent), var(--background) 18px); }
+.answer-component { margin-top: 20px; }
+.career-list, .career-card { margin: 15px 0 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; min-width: 0; }
+.career-list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 19px 20px; }
+.career-eyebrow { display: block; font-size: 9px; letter-spacing: 1.6px; font-weight: 600; color: var(--text-muted); margin-bottom: 5px; }
+.career-list h3 { font-size: 18px; letter-spacing: -.5px; margin: 0; font-weight: 500; }
+.career-list h3 > span { display: inline-block; margin-left: 7px; font-size: 11px; line-height: 22px; padding: 0 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; }
+.career-filter { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--background); color: var(--text-muted); width: 220px; max-width: 100%; }
+.career-filter:focus-within { border-color: var(--accent); }
+.career-filter svg { flex-shrink: 0; }
+.career-filter input { min-width: 0; width: 100%; font: inherit; font-size: 12px; border: 0; outline: 0; background: transparent; color: var(--text); }
+.career-filter input:focus-visible { outline: 0; }
+.career-filter input::placeholder { color: var(--text-muted); }
+.career-table-scroll { width: 100%; overflow-x: auto; }
+.career-table-scroll:focus-visible { outline-offset: -3px; }
+.career-list table { width: 100%; min-width: 610px; border-collapse: collapse; text-align: left; font-size: 12px; line-height: 1.6; }
+.career-list th { background: var(--surface-subtle); color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .8px; font-weight: 600; border-top: 1px solid var(--border); }
+.career-list th, .career-list td { padding: 13px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.career-list th:first-child, .career-record > tr:first-child > td:first-child { padding-left: 20px; width: 25%; min-width: 150px; }
+.career-list td:last-child { min-width: 200px; }
+.career-list td { color: var(--text-secondary); overflow-wrap: anywhere; }
+.career-list td > strong { color: var(--text); font-weight: 600; }
+.career-record:hover { background: var(--surface-hover); }
+.career-record-with-skills > tr:first-child > td { border-bottom: 0; padding-bottom: 8px; }
+.career-list .career-skills-row > td { padding: 0 20px 14px; }
+.career-skills-row .career-skills { margin: 0; }
+.career-period { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+.career-secondary { display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+.career-personal { display: inline-block; color: var(--accent); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-size: 10px; }
+.career-skills { display: flex; gap: 5px; flex-wrap: wrap; padding: 0; margin: 9px 0 0; list-style: none; }
+.career-skills li { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-size: 9px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.career-row-summary { margin: 0 0 7px; }
+.career-more { display: inline-flex; align-items: center; gap: 6px; padding: 3px 0; background: none; border: 0; color: var(--accent); font-size: 11px !important; text-align: left; }
+.career-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+.career-more strong { font-size: 17px; font-weight: 500; }
+.career-more:disabled { opacity: .5; }
+.career-list-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 13px 20px; font-size: 10px; color: var(--text-muted); }
+.career-list-footer nav { display: flex; align-items: center; gap: 12px; }
+.career-list-footer button, .career-list-error button { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 6px; padding: 6px 8px; font-size: 10px; }
+.career-list-footer button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+.career-list-footer button:disabled { opacity: .4; }
+.career-empty { padding: 25px 20px; margin: 0; text-align: center; color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border); }
+.career-list-error { padding: 12px 20px; color: var(--danger); font-size: 12px; border-top: 1px solid var(--border); }
+.career-card { padding: 26px; }
+.career-card header { display: flex; align-items: flex-start; gap: 17px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+.career-card-mark { color: var(--accent); background: var(--accent-soft); font-size: 30px; width: 50px; height: 50px; line-height: 50px; text-align: center; border-radius: 12px; flex-shrink: 0; }
+.career-card h3 { font-size: 24px; font-weight: 500; letter-spacing: -.7px; line-height: 1.25; margin: 0 0 7px; overflow-wrap: anywhere; }
+.career-company { font-size: 13px; color: var(--text-secondary); margin: 0 0 5px; }
+.career-card-context { display: flex; flex-wrap: wrap; column-gap: 28px; }
+.career-card-context p { font-size: 12px; margin: 18px 0 4px; }
+.career-card-context span { display: block; color: var(--text-muted); font-size: 10px; margin-bottom: 4px; }
+.career-card-context strong { font-weight: 500; }
+.career-card > .career-skills { margin-top: 17px; }
+.career-card > .career-skills li { font-size: 11px; padding: 3px 9px; }
+.career-card-section { font-size: 13px; line-height: 1.8; color: var(--text-secondary); margin-top: 22px; overflow-wrap: anywhere; }
+.career-card-section h4 { font-size: 11px; letter-spacing: .3px; color: var(--text); margin: 0 0 9px; font-weight: 600; }
+.career-card-section p { margin: 0 0 10px; white-space: pre-wrap; }
+.career-card-section p:last-child { margin-bottom: 0; }
+.career-card-section ul, .career-card-section ol { padding-left: 20px; }
+.career-card-section ul { list-style: disc; }
+.career-card-section ol { list-style: decimal; }
+.career-card-section a { color: var(--accent); text-decoration: underline; }
+.career-card-section pre { overflow-x: auto; }
+@media (max-width: 640px) {
+  .career-list-toolbar { align-items: stretch; flex-direction: column; gap: 14px; padding: 16px; }
+  .career-filter { width: 100%; }
+  .career-filter input { font-size: 16px; }
+  .career-list-footer { padding: 12px; gap: 12px; }
+  .career-list-footer nav { justify-content: space-between; width: 100%; }
+  .career-card { padding: 18px; }
+  .career-card header { gap: 12px; }
+  .career-card h3 { font-size: 21px; }
+  .career-card-mark { width: 38px; height: 38px; line-height: 38px; font-size: 25px; }
+}
 @keyframes thinking-pulse { 50% { opacity: .35; } }
 @media (min-width: 1000px) and (min-height: 850px) { .chat-main { padding-bottom: 150px; } }
 @media (max-width: 640px) {

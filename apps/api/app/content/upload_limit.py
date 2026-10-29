@@ -8,7 +8,9 @@ class UploadLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        chat = scope["type"] == "http" and scope["path"] == "/chat"
+        chat = scope["type"] == "http" and (
+            scope["path"] == "/chat" or scope["path"].startswith("/chat/")
+        )
         if (
             scope["type"] != "http"
             or (not chat and not scope["path"].startswith("/admin/documents"))
@@ -17,6 +19,8 @@ class UploadLimit:
             return await self.app(scope, receive, send)
         # Bound bodies before parsing, including requests without Content-Length.
         limit = 65536 if chat else MAX_UPLOAD_REQUEST
+        if chat and scope["path"] == "/chat/components/page":
+            limit = 256 * 1024
         chunks = []
         size = 0
         while True:

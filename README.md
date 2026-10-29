@@ -1,6 +1,6 @@
 # Career AI
 
-An AI-powered personal portfolio with a public career chatbot and authenticated administration. Recruiters can ask about Thibault's experience, projects, and skills in a centered conversation with streamed answers and compact source labels. The admin panel manages career content, encrypted OpenAI/Anthropic keys, and RAG configuration. A durable background worker extracts text, chunks content, and stores embeddings for semantic or hybrid retrieval.
+An AI-powered personal portfolio with a public career chatbot and authenticated administration. Recruiters can ask about Thibault's experience, projects, and skills in a centered conversation with streamed answers and compact source labels. Optional agentic mode combines exact database queries with semantic evidence before composing an answer. The admin panel manages career content, encrypted OpenAI/Anthropic keys, retrieval settings, and agent prompts and models. A durable background worker extracts text, chunks content, and stores embeddings for semantic or hybrid retrieval.
 
 ## Quick start
 
@@ -27,19 +27,37 @@ Open [administration](http://localhost:3000/admin) and sign in with the initial 
 
 In **Settings → AI Provider**, save provider keys separately from model settings. OpenAI supports embeddings; both providers support chat and LLM-based reranking. Reranking starts disabled. Models can be selected from suggestions or entered by API ID; availability is checked with **Test**. Tests use current form values, make a small billable request, and never save changes. No provider request is made on Save. Use **Settings → RAG** for search mode, retrieval counts, neighboring-chunk expansion, and ingestion chunk size, overlap, and retry count.
 
+Use **Settings → Agents** to enable agentic mode, edit each agent's prompt, or choose a separate provider/model. Existing saved configurations default to agentic mode disabled; enabling it is an explicit settings change after validation. Turning it off restores the existing RAG-only chat on the next question.
+
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
 
 ## Public career chat
 
-The public site and administration share light and dark themes. They follow the device preference initially; the sun/moon control remembers a manual choice across pages, reloads, and tabs. Theme changes preserve active conversations and unsaved forms. If browser storage is unavailable, switching still works for the current page session.
+The public site and administration share theme selection and the same charcoal-and-lavender dark palette; their existing light palettes remain distinct. They follow the device preference initially; the sun/moon control remembers a manual choice across pages, reloads, and tabs. Theme changes preserve active conversations and unsaved forms. If browser storage is unavailable, switching still works for the current page session.
 
 The homepage identifies the chatbot as an AI representation of Thibault. It answers in first person and follows the visitor's language while the interface remains English. Suggested questions help recruiters start; follow-up questions use recent completed conversation turns and freshly retrieved evidence. Conversations remain in browser memory and reset on reload or **New conversation**. Interrupted replies are not sent back as completed history.
 
-The browser posts to a same-origin `/api/chat` proxy, which streams the API's `/chat` response without forwarding admin cookies. SSE `delta` events carry text; `done` carries source labels; `error` ends an interrupted response with a sanitized message. An unexpected end of stream is treated as interruption. Stop/reset cancels the request. Requests, conversation history, provider calls, reranking inputs, and expanded context are bounded. No provider credentials or retrieval controls reach the browser.
+Both chat modes assess each request before research. Unrelated questions, tutorials, coding/debugging tasks, greetings, and thanks receive a brief career-focused reply without retrieval or sources. Mixed requests are answered only for their career-related portion. Follow-ups use recent completed history. Assessment failures end with a sanitized error rather than allowing unrestricted generation.
+
+Job-fit questions are decomposed into explicit requirements and inferred responsibilities. Research collects direct experience and transferable capabilities independently; for example, PHP development suitability can draw on documented Python backend development alongside PHP migration work without equating migration with PHP feature development. Exact factual filters and skill intersections keep their strict meaning. RAG-only fit assessments run at most three focused searches and interleave/deduplicate their results within the existing context budget. Assessment adds one bounded model call using Query Analyzer in agentic mode or the chat model in RAG-only mode; no additional model setting is required.
+
+The browser posts to a same-origin `/api/chat` proxy, which streams the API's `/chat` response without forwarding admin cookies. SSE `delta` events carry text; `component` events carry typed views with generated introductions; `done` carries source labels; `error` ends an interrupted response with a sanitized message. Agentic mode also emits `status` events for brief activity messages while researching and preparing an answer. These describe actual actions and outcomes without exposing private reasoning, prompts, or SQL. An unexpected end of stream is treated as interruption. Stop/reset cancels the request. Requests, conversation history, provider calls, reranking inputs, and expanded context are bounded. No provider credentials or retrieval controls reach the browser. Answers support paragraphs, lists, and Markdown tables; raw HTML and embedded images are not rendered. Source attribution appears only in the Sources section after each answer, without repeated source sentences in the prose, tables, or lists.
 
 Retrieval uses only published job, project, and document chunks compatible with the configured embedding model and dimensions. **Semantic** search uses cosine similarity; **Hybrid** (the default) combines semantic and PostgreSQL full-text ranks. Optional reranking uses the saved AI settings and falls back to retrieval order on failure. **Window size** adds that many adjacent chunks on each side of a selected match (default 1; 0 disables expansion), with overlapping windows deduplicated. Source labels identify the supplied context and optional PDF page ranges; they do not expose private document downloads or admin links.
 
-Choose a chat model and save the required provider keys before using chat. A usable corpus requires at least one successful ingestion with compatible embeddings. Empty or incompatible corpora produce a helpful unavailable response. A failed replacement ingestion leaves the previous published generation available; changing embedding model/dimensions requires re-ingestion before those sources can be searched with the new configuration. Retrieval-only changes take effect on subsequent questions and do not require re-ingestion. Existing configurations receive the new search/window defaults without a database migration.
+Choose a chat model and save the required provider keys before using chat. RAG-only chat requires at least one successful ingestion with compatible embeddings; empty or incompatible corpora produce a helpful unavailable response. In that mode, a failed replacement ingestion leaves the previous published generation available. Agentic semantic searches use current published revisions so older excerpts cannot contradict newly edited structured records. Changing embedding model/dimensions requires re-ingestion before those sources can be searched with the new configuration. Retrieval-only changes take effect on subsequent questions and do not require re-ingestion.
+
+## Agentic mode
+
+The **Query Analyzer** starts career research with the database and reviews the results before requesting semantic evidence or composing an answer. Clarification and redirects can bypass research. The **Database** agent translates natural-language requests into validated, read-only filters and exact counts. The **RAG** agent retrieves narrative evidence, optionally restricted to the complete set of matching records returned by the database. Once enough evidence is available, **Thibault Representative** selects verified project/job list or card components, writes their introductions, and streams an answer in the visitor's language. Aggregate rankings remain Markdown tables. Straightforward questions can finish early; more involved questions can combine searches or request additional evidence.
+
+Each role in **Settings → Agents** has an editable prompt and a reset-to-default button. By default its provider, model, and maximum output tokens inherit **AI Provider → Chat**. Select **Use a different model** to override all three for that role; provider keys remain managed in AI Provider. Each **Test** button uses the draft settings and saved key without saving changes. All four agent tests check native tool calling, including the Representative’s presentation selection. Both OpenAI and Anthropic are supported. Explicitly supported GPT-6-family model IDs use low reasoning effort for agent tool decisions and final synthesis; other models and RAG-only generation retain their default reasoning settings. Editable prompts guide behavior; they do not grant new tools, allow writes, or replace the application's argument validation and evidence rules.
+
+Database matching uses the stored project skills. Multiple required skills must occur on the same project; matching jobs are counted once through a qualifying project. Terms are case-insensitive literal matches, with boundaries for short terms: `AI` matches `Agentic AI`, while `OpenAI`, `LLMs`, and `RAG` are not automatic exact matches for it. The Analyzer may investigate useful related concepts separately. An empty AI-and-PHP intersection remains an empty exact result even if separate AI or PHP searches find projects. Counts describe recorded metadata, not every experience that may exist outside the stored content.
+
+Project and job lists show five records per page by default, ordered by start month newest first with a stable ID tie-breaker unless another ordering was requested. **Settings → Chat components** controls their page sizes independently (1–20). Each list has one text filter and Previous/Next controls that search the complete verified matching set without another AI call. Authenticated opaque tokens retain original membership and page size; pages read current fields and omit deleted records. Ask a fresh question to include newly added matches. Clicking **✳ know more ...** sends a new chat turn with the selected record’s authenticated identity. The Representative introduces its card; job cards also show all associated projects when present. Completed history retains compact displayed-record references for contextual follow-ups, never as factual evidence. There is no server conversation store. See [ADR 0010](docs/adr/0010-verified-chat-components.md).
+
+Current structured records can support counts and answers before ingestion succeeds or when embeddings are unavailable. Narrative retrieval still requires an embedding key and compatible current chunks. Missing or failed research is reported as a limitation, not a zero count. Runs allow up to four Analyzer decisions and eight research operations, including specialist repairs, within a 120-second deadline. Research gets at most 90 seconds, reserving at least 30 seconds for the Representative; the answer can also use unused research time. If research cannot finish, the Representative uses verified evidence already collected; an interrupted answer ends with an error. Agentic mode can make more billable model requests than RAG-only chat. Prompt, model, and mode changes apply to the next question and require neither migration nor re-ingestion. See [ADR 0007](docs/adr/0007-agentic-career-research.md).
 
 ## Career content
 
@@ -128,6 +146,21 @@ docker compose -f compose.yaml -f compose.dev.yaml run --rm --no-deps web npm ru
 
 The frontend production build runs as part of its runtime image build. To check hot reload, edit the homepage and refresh; edit a Python application file and check the API logs for a reload.
 
+### Comparing real-model answers
+
+The API runtime image includes `scripts/evaluate_agents.py` and the cases in `tests/fixtures/agent_evaluation.json`. List cases without database or provider calls, then compare selected cases using the saved models and keys:
+
+```sh
+docker compose exec -T api python scripts/evaluate_agents.py --list
+docker compose exec -T api python scripts/evaluate_agents.py --mode both --case python_all,ai_php_intersection > /tmp/career-ai-agent-evaluation.jsonl
+```
+
+Evaluation enforces read-only database transactions and changes the mode only in memory; saved settings and career records are untouched. Runs other than `--list` make billable provider requests. Use `--mode agentic` or `--mode rag` for one pipeline, omit `--case` for every fixture, or repeat `--case` to select more cases.
+
+Each JSONL result includes the answer, latency, activity, sources, database results, and comparisons with structured database oracles. Oracle checks compare exact counts, complete membership, and displayed pages; a nonzero exit indicates a run error or a failed required check. They do not validate narrative accuracy, language, grounding, or presentation: review the answer and each case's `review_expectations`, and inspect the actual filters, especially when both results are empty. RAG-only runs have no exact database evidence to compare. `model_usage` covers agent tool decisions only; it excludes streamed final answers, embeddings, reranking, and the RAG baseline, so it is not a complete cost report.
+
+See the [issue 9 release evaluation](docs/agent-evaluation.md) for the initial paired comparison and its limits.
+
 ## Database and migrations
 
 The first migration enables `vector`; the second adds the administrator, revocable sessions, encrypted provider credentials, and RAG settings; the third adds career content and PDF storage; the fourth adds ingestion jobs, logs, text, chunks, and vectors; the fifth retires standalone skill embeddings. Login throttling lives on the singleton administrator record. Alembic imports the domain models so it can discover their metadata.
@@ -153,7 +186,7 @@ docker compose logs -f
 docker compose down
 ```
 
-`down` preserves the named PostgreSQL volume. To permanently delete the local database and start over:
+`down` preserves the named PostgreSQL volume. To permanently discard a disposable development database and start over:
 
 ```sh
 docker compose down --volumes
@@ -162,4 +195,6 @@ docker compose up --build
 
 If startup fails, inspect `docker compose logs db migrate api web`. A failed migration prevents API startup. A failed database probe makes `/health` return 503 with no connection details. If ports are occupied, change `API_PORT`/`WEB_PORT` in `.env`.
 
-The default images use production application commands, but this Compose setup is a local foundation. Public deployment, TLS, backups, separate database roles, and hosted secret management belong to later deployment work.
+The deployed application at [thibault-leveau.com](https://thibault-leveau.com) also runs this repository's Docker Compose stack. Public HTTPS is supplied outside this Compose file; preserve the host's existing deployment configuration. Back up PostgreSQL and retain `SETTINGS_ENCRYPTION_KEY` before production updates, preserve the named database volume, run required migrations with the rebuilt API image, and verify application and health endpoints afterward. The agentic feature adds no schema migration. Enable it in Agents settings after validation; disable the same switch to return to RAG-only behavior.
+
+The Database Agent supports composable read-only queries across skills, projects, jobs and document metadata, including relationships, grouped counts, rankings and overlapping timeline coverage. It can read current document text without embeddings. No migration or re-ingestion is needed for these capabilities. Shipped prompt defaults update automatically when unchanged; customized prompts and agent model overrides are preserved. See [query capabilities](docs/career-query-capabilities.md) for syntax, bounds and the real-model analytical evaluator. The existing Agents switch remains the immediate rollback to RAG-only.
