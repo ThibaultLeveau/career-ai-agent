@@ -16,3 +16,4 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 - [0010: Database-first answers and verified chat components](0010-verified-chat-components.md) — Accepted
 
 - [0011: Markdown content and compact career components](0011-markdown-and-compact-career-components.md) — Accepted
+- [0012: Public experience browsing](0012-public-experience-browsing.md) — Accepted

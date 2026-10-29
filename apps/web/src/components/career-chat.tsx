@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { PublicHeader } from "@/components/public-header";
 import { ChatAnswer } from "@/components/chat-answer";
 import { ChatComponentView } from "@/components/chat-components";
 import type { DetailAction } from "@/lib/chat-components";
@@ -193,16 +191,7 @@ export function CareerChat() {
   return (
     <div className={`portfolio${turns.length ? " has-conversation" : ""}`}>
       <a className="portfolio-skip" href="#chat-input">Skip to conversation</a>
-      <header className="portfolio-header">
-        <Link className="portfolio-brand" href="/" aria-label="Thibault Leveau, home" onClick={reset}>
-          <BrandMark className="portfolio-logo" />
-          <span>Thibault Leveau</span>
-        </Link>
-        <div className="portfolio-header-actions">
-          {turns.length > 0 && <button type="button" className="new-conversation" onClick={reset} aria-label="New conversation"><span className="new-conversation-label">New conversation</span><Arrow diagonal /></button>}
-          <ThemeToggle />
-        </div>
-      </header>
+      <PublicHeader onHomeClick={reset} actions={turns.length > 0 && <button type="button" className="new-conversation" onClick={reset} aria-label="New conversation"><span className="new-conversation-label">New conversation</span><Arrow diagonal /></button>} />
 
       <main className="chat-main" id="main-content">
         {turns.length === 0 ? (

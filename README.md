@@ -1,6 +1,6 @@
 # Career AI
 
-An AI-powered personal portfolio with a public career chatbot and authenticated administration. Recruiters can ask about Thibault's experience, projects, and skills in a centered conversation with streamed answers and compact source labels. Optional agentic mode combines exact database queries with semantic evidence before composing an answer. The admin panel manages career content, encrypted OpenAI/Anthropic keys, retrieval settings, and agent prompts and models. A durable background worker extracts text, chunks content, and stores embeddings for semantic or hybrid retrieval.
+An AI-powered personal portfolio with public experience browsing, a career chatbot, and authenticated administration. Recruiters can explore jobs and projects directly or ask about Thibault's experience and skills in a centered conversation with streamed answers and compact source labels. Optional agentic mode combines exact database queries with semantic evidence before composing an answer. The admin panel manages career content, encrypted OpenAI/Anthropic keys, retrieval settings, and agent prompts and models. A durable background worker extracts text, chunks content, and stores embeddings for semantic or hybrid retrieval.
 
 ## Quick start
 
@@ -30,6 +30,14 @@ In **Settings → AI Provider**, save provider keys separately from model settin
 Use **Settings → Agents** to enable agentic mode, edit each agent's prompt, or choose a separate provider/model. Existing saved configurations default to agentic mode disabled; enabling it is an explicit settings change after validation. Turning it off restores the existing RAG-only chat on the next question.
 
 The example credentials are for local development. Set database credentials and host ports in `.env`; this file is ignored by Git. Web/API ports bind to localhost; PostgreSQL is reachable only inside Compose. Changing database credentials after the first run does not update an existing PostgreSQL volume.
+
+## Public experiences
+
+The shared public header links **Home** and **Experiences → Jobs / Projects**. Browse [Jobs](http://localhost:3000/jobs) as a chronological list and [Projects](http://localhost:3000/projects) as a responsive card grid. Both collections show 12 records per page, ordered by start month newest first, undated records last, then descending ID. Search covers the complete collection, including narrative fields and related metadata. Jobs filter by company, skill, and status; projects filter by professional/personal type, linked experience, skill, and status. Skills shown for a job come from its linked projects. **Past** means the record is not marked ongoing, including undated records.
+
+Filters combine and remain in the URL (`q`, `company`, `skill_id`, `status`, `kind`, `job_id`, and `page`, as applicable). Changing a filter returns to page one; dropdown choices come from the complete collection. Detail pages at `/jobs/[id]` and `/projects/[id]` retain the originating list filters in their back link, support direct links and reloads, and connect jobs with their projects. Populated narrative sections render safe Markdown, while missing sections are omitted. Deleted or unknown records return 404. All public pages share the existing light/dark theme choice, support keyboard navigation, and respect reduced-motion preferences.
+
+Browsing reads current structured content without chat, model calls, embeddings, or ingestion prerequisites. Admin edits become available on subsequent page loads. Anonymous read-only API routes are `GET /public/jobs`, `GET /public/jobs/{id}`, `GET /public/projects`, and `GET /public/projects/{id}`. List routes return records, total and matching counts, pagination, and filter choices. Their explicit public response types omit ingestion state, timestamps, administrative data, and chat tokens. The web server calls these endpoints with uncached reads and bounded timeouts; it does not forward administrator cookies. There is no separate publishing workflow or migration for this feature. See [ADR 0012](docs/adr/0012-public-experience-browsing.md).
 
 ## Public career chat
 
