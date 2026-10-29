@@ -98,7 +98,7 @@ test("public homepage makes the conversation clear on desktop and mobile", async
   const brand = page.getByRole("link", { name: "Thibault Leveau, home" });
   await expect(brand).toHaveText("Thibault Leveau");
   await expect(brand.locator("svg")).toHaveCount(1);
-  await expect(page.locator(".portfolio-header small, .portfolio-footer, .chat-disclosure")).toHaveCount(0);
+  await expect(page.locator(".portfolio-brand small, .portfolio-footer, .chat-disclosure")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled();
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /admin/i })).toHaveCount(0);
