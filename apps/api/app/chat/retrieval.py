@@ -29,6 +29,12 @@ SEARCH = text(
     """
     + ELIGIBLE
     + """
+      AND (NOT :fresh_only OR j.revision = s.revision)
+      AND (NOT :scoped OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(CAST(:scope AS jsonb)) allowed(value)
+          WHERE allowed.value->>0 = s.source_type
+            AND CAST(allowed.value->>1 AS integer) = s.record_id
+      ))
     ), semantic AS (
         SELECT id, row_number() OVER (
             ORDER BY embedding <=> CAST(:vector AS vector), id
@@ -103,8 +109,23 @@ def available(db: Session, config: RagSettings) -> bool:
 
 
 def search(
-    db: Session, query: str, vector: list[float], config: RagSettings
+    db: Session,
+    query: str,
+    vector: list[float],
+    config: RagSettings,
+    scope: list[tuple[str, int]] | None = None,
+    *,
+    fresh_only: bool | None = None,
 ) -> list[Candidate]:
+    if scope == []:
+        return []
+    if scope is not None and any(
+        kind not in {"jobs", "projects", "documents"}
+        or type(record_id) is not int
+        or record_id <= 0
+        for kind, record_id in scope
+    ):
+        raise ValueError("Invalid retrieval source scope")
     rows = db.execute(
         SEARCH,
         {
@@ -114,6 +135,9 @@ def search(
             "hybrid": config.retrieval.mode == "hybrid",
             "count": config.retrieval.candidate_count,
             "window": config.retrieval.window_size,
+            "scoped": scope is not None,
+            "scope": json.dumps(scope or []),
+            "fresh_only": scope is not None if fresh_only is None else fresh_only,
         },
     ).mappings()
     seeds: dict[int, tuple[str, list[Passage]]] = {}

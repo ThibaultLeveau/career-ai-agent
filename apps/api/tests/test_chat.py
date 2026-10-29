@@ -23,6 +23,16 @@ database = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def career_assessment(monkeypatch):
+    from app.chat import assessment
+
+    async def assess(config, key, request):
+        return assessment.Assessment(intent="career", question=request.message)
+
+    monkeypatch.setattr(assessment, "assess", assess)
+
+
 def collect(iterator):
     async def run():
         return [value async for value in iterator]

@@ -34,6 +34,8 @@ COPY --from=dependencies /opt/venv /opt/venv
 COPY --from=dependencies /opt/tokenizer /opt/tokenizer
 COPY --chown=app:app app ./app
 COPY --chown=app:app migrations ./migrations
+COPY --chown=app:app scripts ./scripts
+COPY --chown=app:app tests/fixtures/agent_evaluation.json ./tests/fixtures/agent_evaluation.json
 COPY alembic.ini ./
 USER app
 EXPOSE 8000

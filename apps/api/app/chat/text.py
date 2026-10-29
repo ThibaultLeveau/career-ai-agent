@@ -32,21 +32,30 @@ def retrieval_query(data: ChatRequest) -> str:
 
 
 def bounded_history(data: ChatRequest) -> list[dict[str, str]]:
+    def navigation(item):
+        content = item.content
+        if item.components:
+            content += "\nDisplayed career records (navigation only, not evidence):\n"
+            content += "\n".join(
+                f"{ref.type} {ref.id}: {ref.label}" for ref in item.components
+            )
+        return {"role": item.role, "content": content}
+
     result: list[dict[str, str]] = []
     remaining = HISTORY_TOKENS
     for start in range(len(data.history) - 2, -1, -2):
-        pair = data.history[start : start + 2]
-        size = sum(len(tokens(item.content)) for item in pair)
+        pair = [navigation(item) for item in data.history[start : start + 2]]
+        size = sum(len(tokens(item["content"])) for item in pair)
         if size > remaining:
             if not result:
                 result = [
                     {
-                        "role": item.role,
-                        "content": truncate(item.content, remaining // 2),
+                        "role": item["role"],
+                        "content": truncate(item["content"], remaining // 2),
                     }
                     for item in pair
                 ]
             break
-        result[0:0] = [item.model_dump() for item in pair]
+        result[0:0] = pair
         remaining -= size
     return result

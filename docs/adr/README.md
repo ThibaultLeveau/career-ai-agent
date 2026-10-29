@@ -9,3 +9,8 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 - [0004: Durable RAG ingestion in PostgreSQL](0004-rag-ingestion.md) — Accepted
 - [0005: Skills as project metadata and current ingestion overview](0005-project-skill-ingestion.md) — Accepted
 - [0006: Public career chat and retrieval](0006-public-career-chat.md) — Accepted
+- [0007: Agentic career research with supervised retrieval](0007-agentic-career-research.md) — Accepted
+- [0008: Composable, read-only career queries](0008-composable-career-queries.md) — Accepted
+
+- [0009: Career boundary and criterion-based role fit](0009-career-boundary-and-role-fit.md)
+- [0010: Database-first answers and verified chat components](0010-verified-chat-components.md) — Accepted

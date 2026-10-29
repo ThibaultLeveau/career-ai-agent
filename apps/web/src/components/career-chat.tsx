@@ -1,9 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ChatAnswer } from "@/components/chat-answer";
+import { ChatComponentView } from "@/components/chat-components";
+import type { DetailAction } from "@/lib/chat-components";
 import {
   completedHistory,
   readChatStream,
@@ -29,32 +32,6 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
       />
     </svg>
   );
-}
-
-function InlineText({ text }: { text: string }) {
-  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**"))
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
-    if (part.startsWith("`") && part.endsWith("`"))
-      return <code key={index}>{part.slice(1, -1)}</code>;
-    return <Fragment key={index}>{part}</Fragment>;
-  });
-}
-
-function Answer({ text }: { text: string }) {
-  return text.split(/\n\s*\n/).map((paragraph, index) => {
-    const lines = paragraph.split("\n");
-    if (lines.every((line) => /^\s*[-*] /.test(line))) {
-      return (
-        <ul key={index}>
-          {lines.map((line, item) => (
-            <li key={item}><InlineText text={line.replace(/^\s*[-*] /, "")} /></li>
-          ))}
-        </ul>
-      );
-    }
-    return <p key={index}><InlineText text={paragraph.replace(/^#{1,6}\s+/gm, "")} /></p>;
-  });
 }
 
 function SourceList({ sources }: { sources: ChatSource[] }) {
@@ -121,18 +98,18 @@ export function CareerChat() {
       : turn));
   }
 
-  async function send(question: string, retryId?: number) {
+  async function send(question: string, retryId?: number, action?: DetailAction) {
     const message = question.trim();
     if (!message || active.current) return;
     const id = retryId ?? ++nextId.current;
     const previous = retryId === undefined ? turns : turns.filter((turn) => turn.id !== retryId);
     const history = completedHistory(previous);
-    while (new TextEncoder().encode(JSON.stringify({ message, history })).byteLength > 65536)
+    while (history.length && new TextEncoder().encode(JSON.stringify({ message, history, action })).byteLength > 65536)
       history.splice(0, 2);
     const request = { id, controller: new AbortController() };
     active.current = request;
     follow.current = true;
-    const turn: ChatTurn = { id, question: message, answer: "", status: "pending", sources: [] };
+    const turn: ChatTurn = { id, question: message, answer: "", blocks: [], action, status: "pending", sources: [] };
     setTurns([...previous, turn]);
     setDraft("");
     setBusy(true);
@@ -142,7 +119,7 @@ export function CareerChat() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify({ message, history, ...(action ? { action } : {}) }),
         signal: request.controller.signal,
         cache: "no-store",
       });
@@ -154,17 +131,34 @@ export function CareerChat() {
       }
       const sources = await readChatStream(response, (text) => {
         if (active.current === request)
-          updateTurn(id, (current) => ({ answer: current.answer + text }));
+          updateTurn(id, (current) => {
+            const blocks = [...current.blocks];
+            const last = blocks.at(-1);
+            if (last?.type === "text") blocks[blocks.length - 1] = { type: "text", text: last.text + text };
+            else blocks.push({ type: "text", text });
+            return { answer: current.answer + text, blocks, activity: undefined };
+          });
+      }, (activity) => {
+        if (active.current === request) {
+          updateTurn(id, { activity });
+          setAnnouncement(activity.message);
+        }
+      }, (component) => {
+        if (active.current === request) updateTurn(id, (current) => ({
+          answer: `${current.answer}\n\n${component.introduction}`.trim(),
+          blocks: [...current.blocks, { type: "component", ...component }],
+          activity: undefined,
+        }));
       });
       if (active.current !== request) return;
-      updateTurn(id, { status: "complete", sources });
+      updateTurn(id, { status: "complete", sources, activity: undefined });
       setAnnouncement("Response ready. You can read it in the conversation.");
     } catch (error) {
       if (active.current !== request) return;
       const message = error instanceof Error && error.name !== "TypeError" && error.name !== "SyntaxError"
         ? error.message
         : "The connection was interrupted. Please try again.";
-      updateTurn(id, { status: "error", error: message });
+      updateTurn(id, { status: "error", error: message, activity: undefined });
       setAnnouncement("The response could not be completed. You can try again.");
     } finally {
       if (active.current === request) {
@@ -179,7 +173,7 @@ export function CareerChat() {
     if (!request) return;
     active.current = null;
     request.controller.abort();
-    updateTurn(request.id, { status: "stopped" });
+    updateTurn(request.id, { status: "stopped", activity: undefined });
     setBusy(false);
     setAnnouncement("Response stopped.");
     input.current?.focus();
@@ -233,13 +227,26 @@ export function CareerChat() {
                 <div className="chat-question"><span className="sr-only">You: </span>{turn.question}</div>
                 <div className="chat-answer">
                   <div className="answer-identity"><span className="answer-mark" aria-hidden="true">✳</span><span>Thibault’s assistant<small>AI</small></span></div>
-                  {turn.answer && <div className="answer-content"><Answer text={turn.answer} /></div>}
-                  {turn.status === "pending" && <p className="thinking"><span aria-hidden="true">• • •</span>{turn.answer ? "Still writing…" : "Thinking about your question…"}</p>}
+                  {turn.blocks.map((block, blockIndex) => block.type === "text"
+                    ? <div className="answer-content" key={blockIndex}><ChatAnswer text={block.text} /></div>
+                    : <div className="answer-component" key={blockIndex}>
+                      <div className="answer-content"><ChatAnswer text={block.introduction} /></div>
+                      <ChatComponentView data={block.component} busy={busy}
+                        onOpen={(question, action) => void send(question, undefined, action)}
+                        onUpdate={(data) => {
+                          follow.current = false;
+                          updateTurn(turn.id, (current) => ({
+                            blocks: current.blocks.map((item, index) => index === blockIndex && item.type === "component"
+                              ? { ...item, component: data } : item),
+                          }));
+                        }} />
+                    </div>)}
+                  {turn.status === "pending" && <p className="thinking" data-stage={turn.activity?.stage}><span aria-hidden="true">• • •</span>{turn.activity?.message ?? (turn.answer ? "Still writing…" : "Thinking about your question…")}</p>}
                   {turn.status === "complete" && <SourceList sources={turn.sources} />}
                   {turn.status === "error" && <p className="chat-error" role="alert">{turn.error}</p>}
                   {turn.status === "stopped" && <p className="chat-stopped">Response stopped.</p>}
                   {(turn.status === "error" || turn.status === "stopped") && index === turns.length - 1 && !busy && (
-                    <button type="button" className="retry-response" onClick={() => void send(turn.question, turn.id)}>Try again <span aria-hidden="true">↻</span></button>
+                    <button type="button" className="retry-response" onClick={() => void send(turn.question, turn.id, turn.action)}>Try again <span aria-hidden="true">↻</span></button>
                   )}
                 </div>
               </article>

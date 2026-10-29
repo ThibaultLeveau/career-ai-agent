@@ -161,7 +161,13 @@ export function AdminShell({
                 pathname.startsWith("/admin/settings/")
                   ? pathname === "/admin/settings/ai"
                     ? "Settings / AI Provider"
-                    : "Settings"
+                    : pathname === "/admin/settings/agents"
+                      ? "Settings / Agents"
+                      : pathname === "/admin/settings/chat-components"
+                        ? "Settings / Chat components"
+                      : pathname === "/admin/settings/rag"
+                        ? "Settings / RAG"
+                        : "Settings"
                   : pathname.startsWith("/admin/ingestion")
                     ? "Ingestion Jobs"
                     : pathname.split("/")[2]

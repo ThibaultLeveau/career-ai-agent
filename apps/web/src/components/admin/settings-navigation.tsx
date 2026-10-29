@@ -8,6 +8,8 @@ const sections = [
   { href: "/admin/settings", label: "Account & security", icon: "lock" },
   { href: "/admin/settings/ai", label: "AI Provider", icon: "spark" },
   { href: "/admin/settings/rag", label: "RAG", icon: "documents" },
+  { href: "/admin/settings/agents", label: "Agents", icon: "spark" },
+  { href: "/admin/settings/chat-components", label: "Chat components", icon: "projects" },
 ] as const;
 
 export function SettingsNavigation() {

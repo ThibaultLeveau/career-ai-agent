@@ -3,7 +3,7 @@ import { apiUrl } from "@/lib/admin-server";
 
 export const dynamic = "force-dynamic";
 const allowedPath =
-  /^(login|logout|session|overview|credentials|settings|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
+  /^(login|logout|session|overview|credentials|settings|agents\/defaults|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking|query_analyzer|database|rag|representative)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
 
 async function proxy(
   request: NextRequest,
@@ -30,7 +30,9 @@ async function proxy(
     if (request.method !== "GET" && request.body) {
       const limit = /^documents(?:\/\d+)?$/.test(path)
         ? 11 * 1024 * 1024
-        : 65536;
+        : path === "settings" || path.startsWith("test/")
+          ? 384 * 1024
+          : 65536;
       const reader = request.body.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
@@ -43,7 +45,9 @@ async function proxy(
           return Response.json(
             {
               detail:
-                "Request is too large. PDF files must be 10 MiB or smaller.",
+                /^documents(?:\/\d+)?$/.test(path)
+                  ? "Request is too large. PDF files must be 10 MiB or smaller."
+                  : "The settings request is too large.",
             },
             { status: 413, headers: { "Cache-Control": "no-store" } },
           );

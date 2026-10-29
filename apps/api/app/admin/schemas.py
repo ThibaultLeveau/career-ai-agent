@@ -1,3 +1,4 @@
+import hashlib
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -9,8 +10,19 @@ from pydantic import (
     model_validator,
 )
 
+from app.chat.agent_prompts import DEFAULT_AGENT_PROMPTS, PREVIOUS_DEFAULT_HASHES
+
 Provider = Literal["openai", "anthropic"]
-Stage = Literal["chat", "embeddings", "reranking"]
+AgentName = Literal["query_analyzer", "database", "rag", "representative"]
+Stage = Literal[
+    "chat",
+    "embeddings",
+    "reranking",
+    "query_analyzer",
+    "database",
+    "rag",
+    "representative",
+]
 Username = Annotated[
     str, Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_.-]+$")
 ]
@@ -58,6 +70,47 @@ class Chat(Generation):
     )
 
 
+class AgentRole(StrictModel):
+    prompt: str = Field(max_length=16000)
+    generation: Generation | None = None
+
+
+class Agents(StrictModel):
+    @model_validator(mode="before")
+    @classmethod
+    def upgrade_shipped_defaults(cls, value):
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        for role, fingerprints in PREVIOUS_DEFAULT_HASHES.items():
+            config = value.get(role)
+            if isinstance(config, dict) and isinstance(config.get("prompt"), str):
+                if (
+                    hashlib.sha256(config["prompt"].encode()).hexdigest()
+                    in fingerprints
+                ):
+                    value[role] = {**config, "prompt": DEFAULT_AGENT_PROMPTS[role]}
+        return value
+
+    enabled: bool = False
+    query_analyzer: AgentRole = Field(
+        default_factory=lambda: AgentRole(
+            prompt=DEFAULT_AGENT_PROMPTS["query_analyzer"]
+        )
+    )
+    database: AgentRole = Field(
+        default_factory=lambda: AgentRole(prompt=DEFAULT_AGENT_PROMPTS["database"])
+    )
+    rag: AgentRole = Field(
+        default_factory=lambda: AgentRole(prompt=DEFAULT_AGENT_PROMPTS["rag"])
+    )
+    representative: AgentRole = Field(
+        default_factory=lambda: AgentRole(
+            prompt=DEFAULT_AGENT_PROMPTS["representative"]
+        )
+    )
+
+
 class Embeddings(StrictModel):
     provider: Literal["openai"] = "openai"
     model: Literal["text-embedding-3-small", "text-embedding-3-large"] = (
@@ -101,12 +154,26 @@ class Ingestion(StrictModel):
         return self
 
 
+class ChatComponents(StrictModel):
+    project_list_page_size: int = Field(default=5, ge=1, le=20, strict=True)
+    job_list_page_size: int = Field(default=5, ge=1, le=20, strict=True)
+
+
 class RagSettings(StrictModel):
     chat: Chat = Field(default_factory=Chat)
     embeddings: Embeddings = Field(default_factory=Embeddings)
     reranking: Reranking = Field(default_factory=Reranking)
     retrieval: Retrieval = Field(default_factory=Retrieval)
     ingestion: Ingestion = Field(default_factory=Ingestion)
+    agents: Agents = Field(default_factory=Agents)
+    chat_components: ChatComponents = Field(default_factory=ChatComponents)
+
+
+def agent_generation(settings: RagSettings, role: AgentName) -> Generation:
+    configured = getattr(settings.agents, role).generation
+    return configured or Generation.model_validate(
+        settings.chat.model_dump(exclude={"system_prompt"})
+    )
 
 
 class SettingsPatch(StrictModel):
@@ -115,6 +182,8 @@ class SettingsPatch(StrictModel):
     reranking: Reranking | None = None
     retrieval: Retrieval | None = None
     ingestion: Ingestion | None = None
+    agents: Agents | None = None
+    chat_components: ChatComponents | None = None
 
 
 class ConnectionTest(StrictModel):
