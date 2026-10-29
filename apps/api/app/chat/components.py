@@ -27,6 +27,8 @@ class ListScope(StrictModel):
     entity: Entity
     ids: list[RecordId] = Field(max_length=10000)
     page_size: int = Field(ge=1, le=20)
+    allow_show_all: bool = False
+    job_id: RecordId | None = None
 
 
 class DetailScope(StrictModel):
@@ -39,6 +41,7 @@ class PageRequest(StrictModel):
     token: str = Field(min_length=1, max_length=240000)
     filter: str = Field(default="", max_length=200)
     page: int = Field(default=1, ge=1, le=10000)
+    show_all: bool = False
 
 
 class ComponentError(ValueError):
@@ -59,6 +62,8 @@ def unseal(token: str, schema):
 
 
 class Timeline(StrictModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+
     id: int
     start_month: str | None
     end_month: str | None
@@ -89,7 +94,10 @@ class JobRow(Timeline):
 
 class ProjectDetails(ProjectRow):
     description: str
+    contribution: str
     outcomes: str
+    website_url: str
+    repository_url: str
 
 
 class JobDetails(JobRow):
@@ -104,6 +112,9 @@ class ListPage(StrictModel):
     page: int
     page_size: int
     filter: str
+    filtered: bool = False
+    unfiltered_total: int | None = None
+    scope_label: str = ""
 
 
 class ProjectList(ListPage):
@@ -137,6 +148,7 @@ class Selection(StrictModel):
     type: ComponentKind
     reference: str = Field(min_length=1, max_length=100)
     introduction: str = Field(min_length=1, max_length=1600)
+    record_ids: list[RecordId] | None = Field(default=None, max_length=10000)
 
 
 class Presentation(StrictModel):
@@ -149,6 +161,7 @@ class Target:
     ids: list[int]
     match_type: str = "exact"
     label: str = ""
+    job_id: int | None = None
 
     @property
     def entity(self) -> Entity:
@@ -157,12 +170,7 @@ class Target:
 
 def timeline(record, *, details=False) -> dict:
     entity = "projects" if isinstance(record, Project) else "jobs"
-    summary = record.summary
-    if not details:
-        summary = summary or (
-            record.description if entity == "projects" else record.responsibilities
-        )
-        summary = summary[:320].rstrip() + ("…" if len(summary) > 320 else "")
+    summary = record.summary if details else record.small_summary
     return {
         "id": record.id,
         "start_month": record.start_month,
@@ -191,7 +199,12 @@ def project_row(record: Project, *, details=False) -> ProjectRow:
     }
     return (
         ProjectDetails(
-            **fields, description=record.description, outcomes=record.outcomes
+            **fields,
+            description=record.description,
+            contribution=record.contribution,
+            outcomes=record.outcomes,
+            website_url=record.website_url,
+            repository_url=record.repository_url,
         )
         if details
         else ProjectRow(**fields)
@@ -219,8 +232,36 @@ def job_row(record: Job, *, details=False) -> JobRow:
 def page(db: Session, request: PageRequest) -> ProjectList | JobList:
     scope = unseal(request.token, ListScope)
     model = Project if scope.entity == "projects" else Job
-    conditions = [model.id.in_(scope.ids)]
+    allowed = (
+        [Project.job_id == scope.job_id]
+        if model is Project and scope.job_id is not None
+        else []
+    )
+    if request.show_all:
+        if scope.allow_show_all:
+            ids = list(
+                db.scalars(
+                    select(model.id)
+                    .where(*allowed)
+                    .order_by(model.start_month.desc().nulls_last(), model.id.desc())
+                    .limit(10001)
+                )
+            )
+            if len(ids) > 10000:
+                raise ComponentError(
+                    "This collection is too large. Please ask for a narrower list."
+                )
+            scope = scope.model_copy(update={"ids": ids})
+        request = request.model_copy(
+            update={"token": seal(scope), "filter": "", "page": 1}
+        )
+    conditions = [model.id.in_(scope.ids), *allowed]
     total = db.scalar(select(func.count()).select_from(model).where(*conditions))
+    unfiltered_total = (
+        db.scalar(select(func.count()).select_from(model).where(*allowed))
+        if scope.allow_show_all
+        else None
+    )
     if request.filter:
         term = request.filter
         skill = Skill.keyword.icontains(term, autoescape=True)
@@ -228,6 +269,7 @@ def page(db: Session, request: PageRequest) -> ProjectList | JobList:
             or_(
                 Project.name.icontains(term, autoescape=True),
                 Project.role.icontains(term, autoescape=True),
+                Project.small_summary.icontains(term, autoescape=True),
                 func.coalesce(
                     func.nullif(Project.summary, ""), Project.description
                 ).icontains(term, autoescape=True),
@@ -243,6 +285,7 @@ def page(db: Session, request: PageRequest) -> ProjectList | JobList:
             else or_(
                 Job.title.icontains(term, autoescape=True),
                 Job.company.icontains(term, autoescape=True),
+                Job.small_summary.icontains(term, autoescape=True),
                 func.coalesce(
                     func.nullif(Job.summary, ""), Job.responsibilities
                 ).icontains(term, autoescape=True),
@@ -273,6 +316,10 @@ def page(db: Session, request: PageRequest) -> ProjectList | JobList:
         "page": current,
         "page_size": scope.page_size,
         "filter": request.filter,
+        "filtered": bool(request.filter)
+        or (unfiltered_total is not None and total < unfiltered_total),
+        "unfiltered_total": unfiltered_total,
+        "scope_label": "Projects from this experience" if scope.job_id else "",
     }
     return (
         ProjectList(**fields, items=[project_row(row) for row in rows])
@@ -314,7 +361,13 @@ def render(db: Session, target: Target, config: ChatComponents):
         if target.entity == "projects"
         else config.job_list_page_size
     )
-    scope = ListScope(entity=target.entity, ids=target.ids, page_size=size)
+    scope = ListScope(
+        entity=target.entity,
+        ids=target.ids,
+        page_size=size,
+        allow_show_all=target.match_type != "associated" or target.job_id is not None,
+        job_id=target.job_id,
+    )
     return page(db, PageRequest(token=seal(scope)))
 
 

@@ -13,6 +13,7 @@ FIELDS = {
         "ongoing": "boolean",
         "summary": "text",
         "description": "text",
+        "contribution": "text",
         "outcomes": "text",
         "website_url": "text",
         "repository_url": "text",

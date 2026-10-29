@@ -962,6 +962,67 @@
   gap: 24px;
   padding: 26px !important;
 }
+.markdown-field, .small-summary-field { min-width: 0; }
+.content-field-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.markdown-field-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.markdown-modes { display: inline-flex; gap: 2px; border: 1px solid var(--border-strong); background: var(--surface-subtle); padding: 3px; border-radius: 7px; }
+.markdown-modes button { border: 0; border-radius: 4px; padding: 4px 9px; font-size: 11px; background: transparent; color: var(--text-muted); }
+.markdown-modes button[aria-pressed="true"] { background: var(--surface-raised); color: var(--text); box-shadow: var(--shadow); }
+.markdown-editor-frame { min-width: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-subtle); }
+.markdown-editor-frame:focus-within { border-color: var(--accent); }
+.markdown-editor-frame.field-invalid { border-color: var(--danger); }
+.admin textarea.markdown-source { border: 0; border-radius: 0; margin: 0; min-height: 180px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.admin textarea.markdown-source:focus { outline: 0; }
+.admin small.field-counter { margin-top: 7px; font-size: 11px; line-height: 1.6; }
+.admin .markdown-error { color: var(--danger); font-size: 12px; margin-top: 7px; }
+.admin .markdown-loading { padding: 18px; min-height: 140px; color: var(--text-muted); font-size: 12px; }
+.admin .mdxeditor {
+  --baseBase: var(--surface);
+  --baseBgSubtle: var(--surface);
+  --baseBg: var(--surface-subtle);
+  --baseBgHover: var(--surface-hover);
+  --baseBgActive: var(--surface-hover);
+  --baseLine: var(--border);
+  --baseBorder: var(--border-strong);
+  --baseBorderHover: var(--text-muted);
+  --baseSolid: var(--text-muted);
+  --baseSolidHover: var(--text-secondary);
+  --baseText: var(--text-secondary);
+  --baseTextContrast: var(--text);
+  --basePageBg: var(--surface);
+  --accentBase: var(--surface);
+  --accentBgSubtle: var(--accent-soft);
+  --accentBg: var(--accent-soft);
+  --accentBgHover: var(--surface-hover);
+  --accentBgActive: var(--accent-soft);
+  --accentLine: var(--border);
+  --accentBorder: var(--accent);
+  --accentBorderHover: var(--accent-hover);
+  --accentSolid: var(--accent);
+  --accentSolidHover: var(--accent-hover);
+  --accentText: var(--accent);
+  --accentTextContrast: var(--text);
+  color: var(--text);
+  font-family: inherit;
+}
+.admin .mdxeditor-toolbar { flex-wrap: wrap; gap: 3px; border-radius: 0; border-bottom: 1px solid var(--border); min-height: 40px; padding: 6px; top: 0; position: static; }
+.admin .mdxeditor-root-contenteditable { min-width: 0; overflow-x: auto; }
+.admin .markdown-prose { min-height: 140px; padding: 12px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.admin .markdown-prose > * + * { margin-top: 10px; }
+.admin .markdown-prose :is(ul, ol) { padding-left: 24px; }
+.admin .markdown-prose ul { list-style: disc; }
+.admin .markdown-prose ol { list-style: decimal; }
+.admin .markdown-prose blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 14px; color: var(--text-secondary); }
+.admin .markdown-prose code { background: var(--surface-hover); border-radius: 3px; padding: 2px 4px; font-size: 0.9em; }
+.admin .markdown-prose a { color: var(--accent); text-decoration: underline; }
+.admin .markdown-prose h1 { font-size: 22px; }
+.admin .markdown-prose h2 { font-size: 19px; }
+.admin .markdown-prose h3 { font-size: 16px; }
+.admin .markdown-prose h4, .admin .markdown-prose h5, .admin .markdown-prose h6 { font-size: 14px; }
+.admin .markdown-prose table { border-collapse: collapse; }
+.admin .markdown-prose :is(th, td) { border: 1px solid var(--border-strong); padding: 7px 10px; }
+.admin .markdown-prose :is(td, th) p { margin: 0; }
+.small-summary-field textarea { margin-top: 0; }
 .timeline-fields {
   display: grid;
   gap: 14px;

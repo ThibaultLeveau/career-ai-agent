@@ -3,6 +3,7 @@
 import { IngestionStatus } from "../ingestion-status";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { Job, JobInput, Project } from "@/lib/content";
 import { Notice } from "../ui";
 import {
@@ -13,6 +14,8 @@ import {
   TimelineFields,
   useEditor,
 } from "./shared";
+import { MARKDOWN_LIMIT, SMALL_SUMMARY_LIMIT, MarkdownField, characterCount } from "./markdown-field";
+import { SmallSummaryField } from "./small-summary-field";
 
 export function JobForm({
   job,
@@ -21,6 +24,7 @@ export function JobForm({
   job?: Job;
   projects?: Project[];
 }) {
+  const [generating, setGenerating] = useState(false);
   const editor = useEditor<JobInput>(
     {
       title: job?.title ?? "",
@@ -30,6 +34,7 @@ export function JobForm({
       end_month: job?.end_month ?? null,
       ongoing: job?.ongoing ?? false,
       summary: job?.summary ?? "",
+      small_summary: job?.small_summary ?? "",
       responsibilities: job?.responsibilities ?? "",
       achievements: job?.achievements ?? "",
     },
@@ -37,18 +42,17 @@ export function JobForm({
     job?.id,
   );
   const { values, setValues } = editor;
+  const busy = editor.busy || generating;
+  const invalid = [values.summary, values.responsibilities, values.achievements].some((value) => characterCount(value) > MARKDOWN_LIMIT) || characterCount(values.small_summary) > SMALL_SUMMARY_LIMIT;
   const field = (
     name:
       | "title"
       | "company"
-      | "location"
-      | "summary"
-      | "responsibilities"
-      | "achievements",
+      | "location",
   ) => ({
     value: values[name],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setValues({ ...values, [name]: e.target.value }),
+      setValues((current) => ({ ...current, [name]: e.target.value })),
   });
   return (
     <>
@@ -59,9 +63,9 @@ export function JobForm({
           initial={job.ingestion}
         />
       )}
-      <form onSubmit={editor.submit}>
+      <form onSubmit={(event) => { if (generating) event.preventDefault(); else void editor.submit(event); }}>
         <fieldset
-          disabled={editor.busy}
+          disabled={busy}
           className="settings-section content-form"
         >
           <div className="field-grid">
@@ -73,18 +77,17 @@ export function JobForm({
             value={values}
             onChange={(change) => setValues({ ...values, ...change })}
           />
-          <Field label="Summary" multiline {...field("summary")} />
-          <Field
-            label="Responsibilities"
-            multiline
-            {...field("responsibilities")}
-          />
-          <Field label="Achievements" multiline {...field("achievements")} />
+          <MarkdownField key={`overview-${editor.resetVersion}`} label="Overview" value={values.summary} disabled={busy} onChange={(summary) => setValues((current) => ({ ...current, summary }))} />
+          <SmallSummaryField key={`small-summary-${editor.resetVersion}`} value={values.small_summary} overview={values.summary} disabled={busy} onBusyChange={setGenerating} onChange={(small_summary) => setValues((current) => ({ ...current, small_summary }))} />
+          <MarkdownField key={`responsibilities-${editor.resetVersion}`} label="Responsibilities" value={values.responsibilities} disabled={busy} onChange={(responsibilities) => setValues((current) => ({ ...current, responsibilities }))} />
+          <MarkdownField key={`achievements-${editor.resetVersion}`} label="Achievements" value={values.achievements} disabled={busy} onChange={(achievements) => setValues((current) => ({ ...current, achievements }))} />
         </fieldset>
         <Notice error>{editor.error}</Notice>
         <Notice>{editor.message}</Notice>
         <SaveBar
-          busy={editor.busy}
+          busy={busy}
+          saving={editor.busy}
+          invalid={invalid}
           dirty={editor.dirty}
           isNew={!job}
           reset={editor.reset}
@@ -109,7 +112,7 @@ export function JobForm({
                 key={project.id}
               >
                 <strong>{project.name}</strong>
-                <span>{project.summary || project.role}</span>
+                <span>{project.small_summary || project.role}</span>
               </Link>
             ))}
             {!projects.length && <Empty>No projects linked to this job.</Empty>}

@@ -48,6 +48,7 @@ def source_text(record) -> str:
         "responsibilities",
         "achievements",
         "description",
+        "contribution",
         "outcomes",
         "website_url",
         "repository_url",

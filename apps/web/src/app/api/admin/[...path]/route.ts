@@ -3,7 +3,7 @@ import { apiUrl } from "@/lib/admin-server";
 
 export const dynamic = "force-dynamic";
 const allowedPath =
-  /^(login|logout|session|overview|credentials|settings|agents\/defaults|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking|query_analyzer|database|rag|representative)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
+  /^(login|logout|session|overview|credentials|settings|agents\/defaults|content\/small-summary|providers(?:\/(?:openai|anthropic))?|test\/(?:chat|embeddings|reranking|query_analyzer|database|rag|representative)|(?:jobs|projects|skills)(?:\/[1-9]\d*)?|ingestion\/(?:status|reingest|jobs(?:\/[1-9]\d*(?:\/logs)?)?|(?:jobs|projects|documents)\/[1-9]\d*\/reingest)|documents(?:\/[1-9]\d*(?:\/file)?)?)$/;
 
 async function proxy(
   request: NextRequest,
@@ -32,7 +32,9 @@ async function proxy(
         ? 11 * 1024 * 1024
         : path === "settings" || path.startsWith("test/")
           ? 384 * 1024
-          : 65536;
+          : /^(?:jobs|projects)(?:\/\d+)?$/.test(path)
+            ? 192 * 1024
+            : 65536;
       const reader = request.body.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
@@ -47,7 +49,7 @@ async function proxy(
               detail:
                 /^documents(?:\/\d+)?$/.test(path)
                   ? "Request is too large. PDF files must be 10 MiB or smaller."
-                  : "The settings request is too large.",
+                  : "The request is too large.",
             },
             { status: 413, headers: { "Cache-Control": "no-store" } },
           );
@@ -75,7 +77,7 @@ async function proxy(
         body,
         cache: "no-store",
         redirect: "manual",
-        signal: AbortSignal.timeout(35000),
+        signal: AbortSignal.timeout(path === "content/small-summary" ? 50000 : 35000),
       },
     );
     const headers = new Headers({ "Cache-Control": "no-store" });

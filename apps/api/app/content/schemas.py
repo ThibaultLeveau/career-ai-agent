@@ -15,7 +15,12 @@ from pydantic import (
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
 ]
-Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=8000)]
+Text = Annotated[str, StringConstraints(strip_whitespace=False, max_length=8000)]
+SMALL_SUMMARY_MAX_LENGTH = 280
+SmallSummary = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=SMALL_SUMMARY_MAX_LENGTH),
+]
 Month = Annotated[str, Field(pattern=r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")]
 
 
@@ -40,6 +45,7 @@ class TimelineInput(Input):
     end_month: Month | None = None
     ongoing: bool = False
     summary: Text = ""
+    small_summary: SmallSummary = ""
 
     @model_validator(mode="after")
     def valid_dates(self) -> Self:
@@ -76,6 +82,7 @@ class ProjectInput(TimelineInput):
     name: Name
     role: str = Field(default="", max_length=200)
     description: Text = ""
+    contribution: Text = ""
     outcomes: Text = ""
     website_url: str = Field(default="", max_length=2048)
     repository_url: str = Field(default="", max_length=2048)
@@ -99,7 +106,9 @@ class ProjectOutput(IngestibleOutput):
     end_month: str | None
     ongoing: bool
     summary: str
+    small_summary: str
     description: str
+    contribution: str
     outcomes: str
     website_url: str
     repository_url: str

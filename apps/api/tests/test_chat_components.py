@@ -43,6 +43,45 @@ def test_component_tokens_are_typed_and_authenticated():
         components.unseal(token[:-10] + "tampered!!", components.DetailScope)
 
 
+def test_list_selections_preserve_verified_membership_and_match_type():
+    targets = {
+        "exact": components.Target("project_list", [1, 2, 3]),
+        "related": components.Target("project_list", [4], "related"),
+        "project-1": components.Target("project_card", [1]),
+        "job-1-projects": components.Target("project_list", [1], "associated"),
+    }
+    plan = components.Presentation(
+        components=[
+            {
+                **selection("project_list", "exact"),
+                "record_ids": [3, 1],
+            }
+        ]
+    )
+    presentation.validate(plan, targets, [])
+    assert plan.components[0].record_ids == [3, 1]
+    for kind, reference, ids in [
+        ("project_list", "exact", [4]),
+        ("project_list", "exact", [1, 1]),
+        ("project_list", "exact", []),
+        ("project_card", "project-1", [1]),
+        ("project_list", "job-1-projects", [1]),
+    ]:
+        with pytest.raises(ValueError):
+            presentation.validate(
+                components.Presentation(
+                    components=[
+                        {
+                            **selection(kind, reference),
+                            "record_ids": ids,
+                        }
+                    ]
+                ),
+                targets,
+                [],
+            )
+
+
 def test_selections_require_known_references_introductions_and_job_projects():
     targets = {
         "job-1": components.Target("job_card", [1]),
@@ -169,6 +208,159 @@ def test_full_scope_pagination_filtering_and_deleted_rows(
     assert second.headers["cache-control"] == "no-store, no-transform"
     invalid = client.post("/chat/components/page", json={"token": "fake"})
     assert invalid.status_code == 400
+
+
+@requires_database
+def test_selected_projects_expand_only_on_show_all_and_prose_uses_selection(
+    client,
+    db,
+    career,
+    monkeypatch,
+):
+    _, _, projects, *_ = career
+    ids = [projects[4].id, projects[1].id]
+
+    @contextmanager
+    def session(*args):
+        yield db
+
+    def no_model(*args, **kwargs):
+        raise AssertionError("List controls must not invoke AI")
+
+    monkeypatch.setattr(presentation, "Session", session)
+    monkeypatch.setattr(providers, "tool_turn", no_model)
+    monkeypatch.setattr(providers, "stream", no_model)
+    targets = {"research": components.Target("project_list", [p.id for p in projects])}
+    plan = components.Presentation(
+        components=[
+            {
+                **selection("project_list", "research"),
+                "record_ids": ids,
+            }
+        ]
+    )
+    presentation.validate(plan, targets, [])
+    events, _ = presentation.hydrate(
+        plan, targets, ChatComponents(project_list_page_size=1)
+    )
+    view = events[0].component
+    assert view.filtered and view.total == 2 and view.unfiltered_total == 11
+    assert [item.id for item in view.items] == ids[:1]
+    context = presentation.context(events)[0]
+    assert context["selected_total"] == 2 and context["records_complete"]
+    assert context["selected_records"] == [
+        {"id": ids[0], "label": projects[4].name},
+        {"id": ids[1], "label": projects[1].name},
+    ]
+    second = client.post(
+        "/chat/components/page", json={"token": view.token, "page": 2}
+    ).json()
+    assert [item["id"] for item in second["items"]] == ids[1:]
+    expanded = client.post(
+        "/chat/components/page",
+        json={
+            "token": view.token,
+            "show_all": True,
+            "filter": "missing",
+            "page": 99,
+        },
+    ).json()
+    assert expanded["total"] == expanded["unfiltered_total"] == 11
+    assert (
+        not expanded["filtered"] and expanded["filter"] == "" and expanded["page"] == 1
+    )
+    assert expanded["token"] != view.token
+    following = client.post(
+        "/chat/components/page",
+        json={
+            "token": expanded["token"],
+            "page": 2,
+        },
+    ).json()
+    assert following["total"] == 11 and following["page"] == 2
+    db.delete(projects[4])
+    db.flush()
+    remaining = components.page(db, components.PageRequest(token=view.token, page=99))
+    assert remaining.total == 1 and remaining.page == 1
+
+
+@requires_database
+def test_show_all_stays_in_job_context_and_legacy_tokens_do_not_expand(db, career):
+    first, second, projects, ai, php, both, _ = career
+    view = components.render(
+        db,
+        components.Target(
+            "project_list",
+            [projects[0].id],
+            "associated",
+            job_id=first.id,
+        ),
+        ChatComponents(),
+    )
+    assert view.filtered and view.unfiltered_total == 4
+    assert view.scope_label == "Projects from this experience"
+    expanded = components.page(
+        db, components.PageRequest(token=view.token, show_all=True)
+    )
+    assert {row.id for row in expanded.items} == {
+        projects[0].id,
+        projects[1].id,
+        ai.id,
+        php.id,
+    }
+    assert both.id not in {row.id for row in expanded.items}
+    assert not expanded.filtered and expanded.scope_label == view.scope_label
+
+    legacy = (
+        components.cipher()
+        .encrypt(
+            json.dumps(
+                {
+                    "purpose": "career_list",
+                    "entity": "projects",
+                    "ids": [projects[0].id],
+                    "page_size": 5,
+                }
+            ).encode()
+        )
+        .decode()
+    )
+    unchanged = components.page(db, components.PageRequest(token=legacy, show_all=True))
+    assert [row.id for row in unchanged.items] == [projects[0].id]
+    assert unchanged.unfiltered_total is None
+
+    jobs = components.render(
+        db, components.Target("job_list", [first.id]), ChatComponents()
+    )
+    assert jobs.filtered and jobs.unfiltered_total == 2
+    all_jobs = components.page(
+        db, components.PageRequest(token=jobs.token, show_all=True)
+    )
+    assert {row.id for row in all_jobs.items} == {first.id, second.id}
+    assert not all_jobs.filtered
+
+
+@requires_database
+def test_cards_preserve_markdown_and_lists_use_only_small_summary(db, career):
+    job, _, projects, *_ = career
+    project = projects[0]
+    markdown = "    code\n\nParagraph with a hard break.  \nNext line.\n"
+    project.summary = job.summary = markdown
+    project.small_summary = "A concise project introduction."
+    job.small_summary = "A concise job introduction."
+    project.contribution = markdown
+    project.website_url = "https://example.com/project"
+    project.repository_url = "https://github.com/example/project"
+    db.flush()
+    assert components.project_row(project).summary == project.small_summary
+    assert components.job_row(job).summary == job.small_summary
+    detail = components.card(db, "projects", project.id).record
+    assert detail.summary == detail.contribution == markdown
+    assert detail.website_url == project.website_url
+    assert detail.repository_url == project.repository_url
+    assert components.card(db, "jobs", job.id).record.summary == markdown
+    project.small_summary = ""
+    assert components.project_row(project).summary == ""
 
 
 @requires_database

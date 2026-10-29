@@ -491,6 +491,7 @@ def test_complete_documents_are_combined_before_chunking(pipeline, db):
         "ongoing": True,
         "summary": "Overview marker",
         "description": "Description marker",
+        "contribution": "Contribution marker",
         "outcomes": "Outcomes marker",
         "website_url": "https://example.com",
         "repository_url": "https://example.com/repo",

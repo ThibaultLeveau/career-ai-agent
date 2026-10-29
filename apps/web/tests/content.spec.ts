@@ -17,6 +17,12 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+async function markdownSource(page: Page, label: string) {
+  const field = page.getByRole("group", { name: label, exact: true });
+  await field.getByRole("button", { name: "Markdown", exact: true }).click();
+  return field.getByRole("textbox", { name: `${label} Markdown`, exact: true });
+}
+
 test.beforeEach(async ({ page }) => {
   await login(page);
 });
@@ -57,15 +63,15 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await page.getByLabel("Start month").fill("2022-01");
   await page.getByLabel("Ongoing").check();
   await expect(page.getByLabel("End month")).toBeDisabled();
-  await page.getByLabel("Responsibilities").fill("Build useful products");
+  await (await markdownSource(page, "Responsibilities")).fill("Build useful products");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/jobs\/\d+$/);
   const jobUrl = page.url();
   await page.reload();
-  await expect(page.getByLabel("Responsibilities")).toHaveValue(
+  await expect(await markdownSource(page, "Responsibilities")).toHaveValue(
     "Build useful products",
   );
-  await page.getByLabel("Achievements").fill("Shipped a search platform");
+  await (await markdownSource(page, "Achievements")).fill("Shipped a search platform");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Changes saved");
 
@@ -74,9 +80,7 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
     jobUrl.split("/").pop()!,
   );
   await page.getByLabel("Project name").fill("Search platform");
-  await page
-    .getByLabel("Summary", { exact: true })
-    .fill("Find relevant experience");
+  await (await markdownSource(page, "Overview")).fill("Find relevant experience");
   await page.getByRole("checkbox", { name: "TypeScript 6" }).check();
   await page.getByLabel("Skills", { exact: true }).fill("PostgreSQL");
   await page.getByRole("button", { name: "Create “PostgreSQL”" }).click();
@@ -90,12 +94,12 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await expect(
     page.getByRole("checkbox", { name: "TypeScript 6" }),
   ).toBeChecked();
-  await page.getByLabel("Outcomes").fill("Unsaved outcome");
+  await (await markdownSource(page, "Outcomes")).fill("Unsaved outcome");
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("link", { name: "Jobs", exact: true }).click();
   await expect(page).toHaveURL(projectUrl);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByLabel("Outcomes")).toHaveValue("");
+  await expect(await markdownSource(page, "Outcomes")).toHaveValue("");
   await captureThemes(page, "project-editor");
 
   await page.goto(jobUrl);
@@ -149,6 +153,110 @@ test("manages jobs, linked projects, and keywords", async ({ page }) => {
   await expect(
     page.getByText("No skills yet.", { exact: false }),
   ).toBeVisible();
+});
+
+test("edits Markdown visually and as source without losing draft content", async ({ page }) => {
+  await page.goto("/admin/projects/new");
+  await page.getByLabel("Project name").fill("Markdown portfolio example");
+  const overview = "## Platform\n\nI built **reliable search** and [documentation](https://example.com).\n\n- Search\n  - Nested detail\n- [x] Released\n\n| Area | Result |\n| --- | --- |\n| Search | Faster |\n\n```python\nprint('hello')\n```\n";
+  await (await markdownSource(page, "Overview")).fill(overview);
+  const field = page.getByRole("group", { name: "Overview", exact: true });
+  await field.getByRole("button", { name: "Visual", exact: true }).click();
+  await expect(field.locator("strong")).toHaveText("reliable search");
+  await expect(field.getByRole("table")).toBeVisible();
+  await expect(await markdownSource(page, "Overview")).toHaveValue(overview);
+
+  await (await markdownSource(page, "Overview")).fill("");
+  await field.getByRole("button", { name: "Visual", exact: true }).click();
+  const visual = field.locator(".markdown-prose[contenteditable=true]");
+  await visual.fill("A useful platform");
+  await visual.press("ControlOrMeta+a");
+  await field.getByRole("radio", { name: "Bold", exact: true }).click();
+  await expect(await markdownSource(page, "Overview")).toHaveValue("**A useful platform**");
+  const contribution = "    preserved indentation\n\nI delivered **retrieval** and *testing*.\n\n";
+  await (await markdownSource(page, "My contribution")).fill(contribution);
+  await page.getByLabel("Small Summary", { exact: true }).fill("Built a useful search platform.");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/projects\/\d+$/);
+  const endpoint = `/api/admin/projects/${page.url().split("/").pop()}`;
+  await page.reload();
+  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await expect(await markdownSource(page, "My contribution")).toHaveValue(contribution);
+  await expect(await markdownSource(page, "Overview")).toHaveValue("**A useful platform**");
+  const saved = await (await page.request.get(endpoint)).json();
+  expect(saved.contribution).toBe(contribution);
+  expect(saved.small_summary).toBe("Built a useful search platform.");
+
+  const contributionField = page.getByRole("group", { name: "My contribution", exact: true });
+  await contributionField.getByRole("button", { name: "Visual", exact: true }).click();
+  await expect(contributionField.locator(".cm-content")).toContainText("preserved indentation");
+  const contributionParagraph = contributionField.locator(".markdown-prose > p").filter({ hasText: "I delivered" });
+  await contributionParagraph.click();
+  await page.keyboard.press("End");
+  await page.keyboard.insertText(" Updated.");
+  const editedContribution = await (await markdownSource(page, "My contribution")).inputValue();
+  expect(editedContribution).toMatch(/^```[^\n]*\npreserved indentation\n```/);
+  expect(editedContribution).toContain("Updated.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(await markdownSource(page, "My contribution")).toHaveValue(contribution);
+
+  await (await markdownSource(page, "Outcomes")).fill("x".repeat(8001));
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await expect(page.getByRole("group", { name: "Outcomes", exact: true }).getByRole("alert")).toContainText("shorten this field");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(await markdownSource(page, "Outcomes")).toHaveValue("");
+  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+
+  const unsupported = "![A diagram](https://example.com/diagram.png)";
+  await (await markdownSource(page, "Description")).fill(unsupported);
+  const description = page.getByRole("group", { name: "Description", exact: true });
+  await description.getByRole("button", { name: "Visual", exact: true }).click();
+  await expect(description.getByRole("alert")).toContainText("Your Markdown is preserved");
+  await description.getByRole("button", { name: "Edit Markdown", exact: true }).click();
+  await expect(description.getByRole("textbox")).toHaveValue(unsupported);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect((await page.request.delete(endpoint, { headers: { Origin: new URL(page.url()).origin } })).status()).toBe(204);
+});
+
+test("generates a bounded small summary from the current unsaved Overview", async ({ page }) => {
+  await page.goto("/admin/jobs/new");
+  const button = page.getByRole("button", { name: "AI Generation", exact: true });
+  await expect(button).toBeDisabled();
+  await (await markdownSource(page, "Overview")).fill("\n\n");
+  await expect(button).toBeDisabled();
+  const overview = "I built **search** and supported a team.";
+  await (await markdownSource(page, "Overview")).fill(overview);
+  await page.getByRole("group", { name: "Responsibilities", exact: true }).locator(".markdown-prose[contenteditable=true]").fill("Keep this unsaved responsibility");
+  await page.getByLabel("Small Summary", { exact: true }).fill("Existing draft");
+  let complete!: () => void;
+  const responseReady = new Promise<void>((resolve) => { complete = resolve; });
+  await page.route("**/api/admin/content/small-summary", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ overview });
+    await responseReady;
+    await route.fulfill({ json: { small_summary: "Built search and supported a team." } });
+  });
+  await button.click();
+  await expect(page.getByRole("button", { name: "Generating…", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create", exact: true })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Overview Markdown", exact: true })).toBeDisabled();
+  complete();
+  await expect(page.getByLabel("Small Summary", { exact: true })).toHaveValue("Built search and supported a team.");
+  await expect(await markdownSource(page, "Responsibilities")).toHaveValue("Keep this unsaved responsibility");
+  await expect(page).toHaveURL(/\/admin\/jobs\/new$/);
+  await expect(page.getByText("You have unsaved changes", { exact: true })).toBeVisible();
+  await page.unroute("**/api/admin/content/small-summary");
+  await page.route("**/api/admin/content/small-summary", (route) => route.fulfill({ status: 503, json: { detail: "Generation unavailable. Try again." } }));
+  await button.click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("Generation unavailable");
+  await expect(page.getByLabel("Small Summary", { exact: true })).toHaveValue("Built search and supported a team.");
+  await page.getByLabel("Small Summary", { exact: true }).fill("x".repeat(300));
+  await expect(page.getByLabel("Small Summary", { exact: true })).toHaveValue("x".repeat(280));
+  await page.getByLabel("Small Summary", { exact: true }).fill("🚀".repeat(280));
+  await expect(page.getByLabel("Small Summary", { exact: true })).toHaveValue("🚀".repeat(280));
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByLabel("Small Summary", { exact: true })).toHaveValue("");
+  await expect(button).toBeDisabled();
 });
 
 test("uploads, renames, replaces, downloads, and deletes PDFs", async ({

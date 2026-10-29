@@ -1,25 +1,38 @@
 """The Representative selects views; only the server can populate their records."""
 
+from dataclasses import replace
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.chat import components
 from app.chat.query_schema import DatabaseRequest
 from app.chat.schemas import Citation, DetailAction
+from app.content.models import Job, Project
 from app.db import get_engine
 
 RULES = """Select reusable career components with select_presentation. The catalog
 contains the only allowed type/reference pairs. Never invent references or record data.
 Use Project List or Job List for explicit lists and when several relevant records
 help answer the question. Use cards for a specific project's or job's details.
+When discussing only selected examples, set record_ids to exactly those verified
+IDs in the order you discuss them. Use only IDs belonging to that list reference;
+never show a whole research result when your answer describes a smaller selection.
+Omit record_ids to show the complete verified result, as for an exhaustive list.
+Never provide record_ids for cards or associated project lists. Keep selections
+from exact and related result sets separate. Record labels are navigation only;
+use the research evidence to decide relevance.
 Counts alone and aggregate rankings can use no components. Do not convert aggregate
 groups into record lists. Keep exact and related matches distinct in introductions.
 Every selection needs a short, natural AI introduction in the visitor's language,
 grounded in the evidence. Describe why these records answer the question. Do not
 repeat entire records or produce a second table: the interface supplies those fields.
-For lists, describe the complete matching collection, not a displayed page. Never
-write a page range such as 'showing 1–8' in the introduction: the interface controls
-pagination and displays the current range. The total is the complete collection;
-initially_visible is only the first page. Do not say all rows are visible at once.
+For lists, the introduction describes the collection chosen by record_ids across
+all its pages; when record_ids is omitted, it describes the full verified target.
+The catalog total counts that target before selection, not the chosen subset.
+initially_visible describes its initial page before selection. Never write a page
+range such as 'showing 1–8': the interface controls pagination and its current range.
+Do not say all rows are visible at once or call selected examples exhaustive.
 If you select a Job Card, immediately follow it with its associated Project List
 when the catalog provides one, with a separate introduction. These are ALL projects
 in that job, regardless of the previous question's filters; say so when relevant.
@@ -64,6 +77,15 @@ def register(targets, query: DatabaseRequest, evidence, refs, handle, match_type
             )
 
 
+def record_labels(db: Session, entity: str, ids: list[int]) -> list[dict]:
+    if not ids:
+        return []
+    model = Project if entity == "projects" else Job
+    label = model.name if model is Project else model.title + " — " + model.company
+    labels = dict(db.execute(select(model.id, label).where(model.id.in_(ids))).all())
+    return [{"id": id, "label": labels[id]} for id in ids if id in labels]
+
+
 def catalog(targets: dict[str, components.Target]) -> list[dict]:
     with Session(get_engine()) as db:
         for reference, target in list(targets.items()):
@@ -75,9 +97,11 @@ def catalog(targets: dict[str, components.Target]) -> list[dict]:
                         ids,
                         "associated",
                         "All projects associated with this job",
+                        job_id=target.ids[0],
                     )
-    return [
-        {
+    options = []
+    for reference, target in targets.items():
+        option = {
             "reference": reference,
             "type": target.type,
             "total": len(target.ids),
@@ -89,8 +113,20 @@ def catalog(targets: dict[str, components.Target]) -> list[dict]:
                 else {}
             ),
         }
-        for reference, target in targets.items()
-    ]
+        if target.type.endswith("_list"):
+            labels = {
+                item.ids[0]: item.label
+                for item in targets.values()
+                if item.type == target.type.replace("_list", "_card") and item.label
+            }
+            option["record_ids"] = target.ids
+            option["records"] = [
+                {"id": id, "label": labels[id]}
+                for id in target.ids[:100]
+                if id in labels
+            ]
+        options.append(option)
+    return options
 
 
 def validate(plan: components.Presentation, targets, required):
@@ -105,6 +141,13 @@ def validate(plan: components.Presentation, targets, required):
             raise ValueError(
                 "Use only type/reference pairs from the component catalog."
             )
+        if item.record_ids is not None:
+            if target.type.endswith("_card") or target.match_type == "associated":
+                raise ValueError("Do not narrow cards or associated project lists.")
+            if len(item.record_ids) != len(set(item.record_ids)):
+                raise ValueError("Select each record at most once.")
+            if not item.record_ids or not set(item.record_ids).issubset(target.ids):
+                raise ValueError("Select only verified IDs from this list reference.")
         if target.match_type == "associated" and (
             index == 0
             or references[index - 1] != item.reference.removesuffix("-projects")
@@ -122,7 +165,10 @@ def hydrate(plan: components.Presentation, targets, config):
     events, sources = [], []
     with Session(get_engine()) as db:
         for selection in plan.components:
-            view = components.render(db, targets[selection.reference], config)
+            target = targets[selection.reference]
+            if selection.record_ids is not None:
+                target = replace(target, ids=selection.record_ids)
+            view = components.render(db, target, config)
             events.append(
                 components.ComponentEvent(
                     introduction=selection.introduction, component=view
@@ -142,6 +188,38 @@ def hydrate(plan: components.Presentation, targets, config):
                     )
                 )
     return events, sources
+
+
+def context(events: list[components.ComponentEvent]) -> list[dict]:
+    result = []
+    with Session(get_engine()) as db:
+        for event in events:
+            view = event.component
+            if isinstance(view, components.ListPage):
+                scope = components.unseal(view.token, components.ListScope)
+                records = record_labels(db, scope.entity, scope.ids[:100])
+                total = view.total
+            else:
+                record = view.record
+                records = [
+                    {
+                        "id": record.id,
+                        "label": record.name
+                        if isinstance(record, components.ProjectRow)
+                        else f"{record.title} — {record.company}",
+                    }
+                ]
+                total = 1
+            result.append(
+                {
+                    "type": view.type,
+                    "introduction": event.introduction,
+                    "selected_total": total,
+                    "selected_records": records,
+                    "records_complete": len(records) == total,
+                }
+            )
+    return result
 
 
 def detail(action: DetailAction):

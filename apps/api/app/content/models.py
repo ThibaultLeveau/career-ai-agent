@@ -52,6 +52,9 @@ class Timeline:
     end_month: Mapped[str | None] = mapped_column(String(7))
     ongoing: Mapped[bool] = mapped_column(default=False)
     summary: Mapped[str] = mapped_column(Text, default="")
+    small_summary: Mapped[str] = mapped_column(
+        String(280), default="", server_default=""
+    )
 
 
 def timeline_constraints():
@@ -86,6 +89,7 @@ class Project(Record, Timeline, Base):
     name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    contribution: Mapped[str] = mapped_column(Text, default="", server_default="")
     outcomes: Mapped[str] = mapped_column(Text, default="")
     website_url: Mapped[str] = mapped_column(String(2048), default="")
     repository_url: Mapped[str] = mapped_column(String(2048), default="")

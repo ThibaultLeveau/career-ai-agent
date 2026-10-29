@@ -11,6 +11,7 @@ export type Timeline = {
   end_month: string | null;
   ongoing: boolean;
   summary: string;
+  small_summary: string;
 };
 export type JobInput = Timeline & {
   title: string;
@@ -25,6 +26,7 @@ export type ProjectInput = Timeline & {
   name: string;
   role: string;
   description: string;
+  contribution: string;
   outcomes: string;
   website_url: string;
   repository_url: string;
