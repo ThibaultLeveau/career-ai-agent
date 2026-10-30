@@ -20,7 +20,35 @@ export type ChatTurn = {
   activity?: ChatActivity;
 };
 
-export type ChatActivity = { stage: string; message: string };
+export type AgentActivity = {
+  id: string;
+  agent: string;
+  message: string;
+  state: "running" | "complete" | "error";
+};
+
+export type ChatActivity = { stage: string; message: string; activities?: AgentActivity[] };
+
+export function chatActivityRows(activity?: ChatActivity, writing = false): AgentActivity[] {
+  if (activity?.activities) return activity.activities;
+  const stage = activity?.stage ?? (writing ? "answering" : "analyzing");
+  const agent = ["database", "fallback", "related"].includes(stage) ? "Database Agents"
+    : stage === "rag" ? "RAG Agents"
+      : stage === "answering" ? "Answer Agent"
+        : stage === "analyzing" ? "Query Analyzer Agent" : "Assistant";
+  return [{
+    id: stage === "analyzing" ? "analyzer" : stage === "answering" ? "answer" : stage,
+    agent,
+    message: activity?.message ?? (writing ? "Writing your answer…" : "Understanding your question…"),
+    state: "running",
+  }];
+}
+
+export function chatActivityAnnouncement(activity?: ChatActivity, writing = false): string {
+  const running = chatActivityRows(activity, writing).filter((item) => item.state === "running");
+  return (running.length > 1 ? "Working in parallel. " : "")
+    + running.map((item) => `${item.agent}: ${item.message}`).join(" ");
+}
 
 type ChatMessage = { role: "user" | "assistant"; content: string; components?: ComponentReference[] };
 
@@ -48,6 +76,28 @@ export function completedHistory(turns: ChatTurn[]): ChatMessage[] {
 }
 
 const interrupted = "The connection was interrupted. Please try again.";
+
+function boundedText(value: unknown, maximum: number): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= maximum;
+}
+
+function isAgentActivity(value: unknown): value is AgentActivity {
+  if (typeof value !== "object" || value === null) return false;
+  const activity = value as Record<string, unknown>;
+  return boundedText(activity.id, 64)
+    && boundedText(activity.agent, 80)
+    && boundedText(activity.message, 500)
+    && typeof activity.state === "string"
+    && ["running", "complete", "error"].includes(activity.state);
+}
+
+function isChatActivity(item: Record<string, unknown>): item is ChatActivity {
+  return boundedText(item.stage, 64) && boundedText(item.message, 500)
+    && (!("activities" in item) || (Array.isArray(item.activities)
+      && item.activities.length <= 8
+      && item.activities.every(isAgentActivity)
+      && new Set(item.activities.map((activity) => activity.id)).size === item.activities.length));
+}
 
 function isSource(value: unknown): value is ChatSource {
   if (typeof value !== "object" || value === null) return false;
@@ -99,14 +149,12 @@ export async function readChatStream(
           onDelta(item.text);
         } else if (event === "component" && isComponentEvent(item)) {
           onComponent?.(item);
-        } else if (
-          event === "status" &&
-          typeof item.stage === "string" &&
-          item.stage.length > 0 && item.stage.length <= 64 &&
-          typeof item.message === "string" &&
-          item.message.length > 0 && item.message.length <= 500
-        ) {
-          onStatus?.({ stage: item.stage, message: item.message });
+        } else if (event === "status" && isChatActivity(item)) {
+          onStatus?.({
+            stage: item.stage,
+            message: item.message,
+            ...(item.activities ? { activities: item.activities } : {}),
+          });
         } else if (
           event === "done" &&
           Array.isArray(item.sources) &&

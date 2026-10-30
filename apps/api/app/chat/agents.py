@@ -29,6 +29,7 @@ from app.chat import (
     resource_reader,
     retrieval,
 )
+from app.chat.activity import Activity
 from app.chat.query_schema import DatabaseRequest
 from app.chat.schemas import ChatRequest, Citation
 from app.chat.service import Prepared, event
@@ -64,10 +65,15 @@ material ambiguity cannot be resolved from the question or available evidence.
 """
 )
 
-ANALYZER_RULES = """You control retrieval, then call compose_answer. Always start career
-research with database_agent, before any RAG or composition. For narrative questions,
-first establish relevant current records; numerical claims require verified counts.
-Only clarification can bypass database research. Use database_agent
+ANALYZER_RULES = """You control retrieval, then call compose_answer. Use the assessed
+criteria to cover every requested position type, skill, responsibility, action,
+outcome, and other condition. Attach the relevant criterion_ids to every research
+request. Batch ALL independent database_agent and rag_agent calls together in the
+same turn so they run in parallel, including the first turn. Do not wait for database
+results before requesting independent broad text research. These scheduling rules
+override editable instructions to search Database first or postpone independent RAG.
+Narrative questions may
+use RAG alone; numerical claims require verified database counts. Use database_agent
 for any count, exhaustive list, or explicit project/job constraints, including combined
 skills. It accepts a natural-language research question. Use rag_agent for narrative
 questions and additional evidence. After database filtering, pass its result_set to
@@ -84,6 +90,19 @@ constraints and page offsets, but recheck facts. Ambiguous 'experiences' should 
 both project and linked-job counts, never add them. Default lists show five newest
 records, with range and total. Independent calls may be issued together. On sufficient
 evidence, call compose_answer; do not keep searching merely because tools remain.
+The Representative receives all collected evidence automatically. Finish with
+compose_answer(mode="answer", guidance="") unless a brief instruction is necessary.
+Keep any guidance to at most two short sentences; do not draft the final answer,
+repeat evidence, or assess each criterion in this handoff. The Representative does
+that analysis. Use only the compose tool's mode and guidance fields.
+Set fallback_to_rag=true on a database task when an empty result should immediately
+trigger a broad text search for that same criterion without another analyzer turn.
+The fallback is related evidence and never changes the original exact zero. Enable
+it only when semantic evidence is useful, alternatives are allowed, and you are not
+already requesting equivalent broad RAG research in parallel. Keep it false for
+counts-only requests and when alternatives are forbidden. Fallbacks, initial research
+and repairs share the operation budget. Only searches requiring a returned result_set
+must wait for that database result; keep independent work in the initial batch.
 The database can query ALL career resources: skills, projects, jobs and documents,
 their relationships, grouped counts/rankings, calculations and timeline coverage.
 Request aggregation directly for rankings: never loop through skills individually.
@@ -93,7 +112,11 @@ Use record/document reading for full details and PDF text even without embedding
 Unsupported operations and retrieval failures are capability limitations, not missing
 career data. Table result total is the number of rows/groups, not a project count.
 For assessment.intent=role_fit, investigate the supplied criteria independently:
-attach criterion_ids to every research request. Research both direct technology
+send separate focused database tasks for independent criteria in the same batch,
+unless a single query can fully answer several. Do not delegate a multi-query plan
+to one specialist. The skill vocabulary is already supplied: start with relevant
+records and contributions, not a preliminary skill ranking or catalog survey.
+Attach criterion_ids to every research request. Research both direct technology
 experience and transferable functional experience, even when direct matches exist.
 Use match_type=related for cross-technology evidence. Do not impose all job criteria
 on one project or limit functional research to the named language. A criterion's
@@ -108,7 +131,10 @@ not an exhaustive index of career capabilities. Always honor an explicitly suppl
 result_set. This exception never applies to factual exact filters or counts.
 """
 
-DATABASE_RULES = """Translate the supplied research question into query_database.
+DATABASE_RULES = """Translate the supplied research question into exactly ONE
+query_database tool call. Never return multiple calls. Each database task is one
+query; the Analyzer batches separate tasks for independent criteria. For role-fit
+criteria prefer relevant records and contributions over a skill-count survey.
 The original visitor request remains authoritative. Retain all its constraints for an
 exact branch; relaxation is allowed only in a related branch. Skills for a project
 must all match that same project; jobs match through a qualifying linked project.
@@ -190,6 +216,13 @@ class ResearchTask(StrictModel):
         "for relaxed filters, broader synonyms, or separate lookups after a failed "
         "combination, even when the visitor requested those alternatives.",
     )
+    fallback_to_rag: bool = Field(
+        default=False,
+        description="For database tasks only: if no records match, immediately try "
+        "related broad text evidence for this question. Enable only when useful "
+        "and alternatives are allowed; not for counts-only queries or when an "
+        "equivalent broad RAG search is already planned.",
+    )
 
 
 class RagTask(ResearchTask):
@@ -202,7 +235,12 @@ class SearchQuery(StrictModel):
 
 class Compose(StrictModel):
     mode: Literal["answer", "clarify"] = "answer"
-    guidance: str = Field(default="", max_length=2000)
+    guidance: str = Field(
+        default="",
+        max_length=2000,
+        description="Usually empty. Optional focus in at most two short sentences; "
+        "evidence is supplied automatically. Do not draft or repeat the answer.",
+    )
 
 
 def tool(name: str, description: str, schema: type[BaseModel]) -> dict:
@@ -220,7 +258,8 @@ SUPERVISOR_TOOLS = [
     tool(
         "database_agent",
         "Ask for exact structured facts, counts, filters or pages. "
-        "Returns a result_set for scoped semantic search.",
+        "Returns a result_set for scoped semantic search. Can trigger RAG on an "
+        "empty result when fallback_to_rag is enabled.",
         ResearchTask,
     ),
     tool(
@@ -301,6 +340,7 @@ class Run:
     vocabulary: list[str] = field(default_factory=list)
     model_usage: list[dict] = field(default_factory=list)
     assessment: request_assessment.Assessment | None = None
+    activity: Activity = field(default_factory=Activity)
 
     def request_context(self):
         return {
@@ -321,18 +361,24 @@ class Run:
         )
         if set(task.criterion_ids) - criteria:
             raise ValueError("Use only criterion IDs from the request assessment.")
-        if (
-            self.assessment
-            and self.assessment.intent == "role_fit"
-            and not task.criterion_ids
-        ):
-            raise ValueError("Role-fit research must identify its criterion_ids.")
+        if self.assessment and self.assessment.criteria and not task.criterion_ids:
+            raise ValueError("Research must identify its assessment criterion_ids.")
 
     async def status(self, stage: str, message: str):
-        await self.queue.put(("status", {"stage": stage, "message": message}))
+        await self.queue.put(("status", self.activity.set_phase(stage, message)))
+
+    async def finish_activity(self, key: str, *, failed=False, empty=False):
+        payload = self.activity.finish(key, failed=failed, empty=empty)
+        if payload:
+            await self.queue.put(("status", payload))
+
+    @property
+    def operation_limit(self):
+        criteria = len(self.assessment.criteria) if self.assessment else 0
+        return max(MAX_OPERATIONS, criteria * 3)
 
     def reserve(self):
-        if self.operations >= MAX_OPERATIONS:
+        if self.operations >= self.operation_limit:
             raise ValueError("The retrieval operation limit was reached.")
         self.operations += 1
 
@@ -454,30 +500,6 @@ class Run:
                 "This database search was already performed. Use its existing result."
             )
         self.seen.add(signature)
-        terms = []
-
-        def skill_terms(expression):
-            if not expression:
-                return
-            if expression.value:
-                terms.append(expression.value)
-            for child in expression.children:
-                skill_terms(child)
-
-        skill_terms(query.skills)
-        label = ", ".join(terms)[:140]
-        await self.status(
-            "database",
-            (
-                f"Querying {query.query.entity} and related career records…"
-                if query.operation == "query"
-                else f"Reading {query.read.entity} details…"
-            )
-            if query.operation != "records"
-            else f"Searching {query.entity}"
-            + (f" matching {label}" if label else " in the database")
-            + "…",
-        )
         result = await run_in_threadpool(query_database, query)
         handle = f"results-{len(self.scopes) + 1}"
         evidence = dict(result) if isinstance(result, dict) else result.model_dump()
@@ -519,14 +541,6 @@ class Run:
         for item in citations:
             citation = Citation.model_validate(item)
             self.sources[citation.id] = citation
-        await self.status(
-            "database",
-            f"Retrieved {evidence['total']} result rows."
-            if query.operation != "records"
-            else f"Found {result.total} matching recorded {query.entity}."
-            if result.total
-            else f"No recorded {query.entity} match these filters.",
-        )
         return evidence
 
     async def rag(self, task: RagTask):
@@ -577,11 +591,6 @@ class Run:
                 "This semantic search was already performed. Use its existing result."
             )
         self.seen.add(signature)
-        await self.status(
-            "rag",
-            "Searching supporting career details"
-            + (" within the matching records…" if scope is not None else "…"),
-        )
         vector = await providers.embed(
             query.query, config.embeddings, self.prepared.embedding_key
         )
@@ -607,29 +616,67 @@ class Run:
         self.sources.update({source.id: source for source in sources})
         return evidence
 
-    async def dispatch(self, call, *, database_first=False):
+    async def dispatch(self, call):
+        activity_key = ""
+        failed = True
         try:
-            if database_first and call.name != "database_agent":
-                raise ValueError("Complete database research before requesting RAG.")
             self.reserve()
+            if call.name not in {"database_agent", "rag_agent"}:
+                raise ValueError("Unknown tool. Use only the supplied tools.")
+            task = (
+                ResearchTask if call.name == "database_agent" else RagTask
+            ).model_validate(call.arguments)
+            self.validate_criteria(task)
+            activity_key = f"research-{self.operations}"
             if call.name == "database_agent":
-                task = ResearchTask.model_validate(call.arguments)
-                self.validate_criteria(task)
+                lane = (
+                    "database-separate"
+                    if task.match_type == "related"
+                    or (self.assessment and self.assessment.intent == "role_fit")
+                    else "database-combined"
+                    if len(set(task.criterion_ids)) > 1
+                    else "database"
+                )
+            else:
+                lane = "rag-scoped" if task.result_set is not None else "rag-broad"
+            criteria = (
+                {
+                    item.id: item.requirement
+                    for item in self.assessment.criteria
+                    if item.id in task.criterion_ids
+                }
+                if self.assessment
+                else {}
+            )
+            await self.queue.put(
+                ("status", self.activity.start(activity_key, lane, criteria))
+            )
+            if call.name == "database_agent":
                 if task.match_type == "exact":
                     self.exact_database_requested = True
-                if task.match_type == "related":
-                    await self.status(
-                        "related",
-                        "Searching related experience separately "
-                        "from the exact matches…",
-                    )
                 self.database_attempted = True
-                return await self.database(task)
-            if call.name == "rag_agent":
-                task = RagTask.model_validate(call.arguments)
-                self.validate_criteria(task)
-                return await self.rag(task)
-            raise ValueError("Unknown tool. Use only the supplied tools.")
+                evidence = await self.database(task)
+                failed = False
+                await self.finish_activity(
+                    activity_key, empty=evidence.get("total") == 0
+                )
+                if task.fallback_to_rag and evidence.get("total") == 0:
+                    fallback = await self.dispatch(
+                        providers.ToolCall(
+                            f"{call.id}-fallback",
+                            "rag_agent",
+                            {
+                                "question": task.question,
+                                "criterion_ids": task.criterion_ids,
+                                "match_type": "related",
+                            },
+                        )
+                    )
+                    return {**evidence, "fallback": self.planner_evidence(fallback)}
+                return evidence
+            evidence = await self.rag(task)
+            failed = False
+            return evidence
         except ValidationError:
             return {"error": "Invalid tool arguments. Follow the supplied schema."}
         except ValueError as error:
@@ -643,6 +690,8 @@ class Run:
             self.limitations.append(limitation)
             logger.warning("Career agent research step unavailable: %s", call.name)
             return {"error": limitation}
+        finally:
+            await self.finish_activity(activity_key, failed=failed)
 
     async def research(self):
         self.vocabulary = await run_in_threadpool(catalog)
@@ -664,18 +713,27 @@ class Run:
                         ),
                         "current_date": current_date(),
                         "skill_vocabulary": self.vocabulary,
+                        "operation_budget": self.operation_limit,
                     },
                     ensure_ascii=False,
                 ),
             }
         ]
-        for _ in range(MAX_DECISIONS):
+        for decision in range(MAX_DECISIONS):
+            criteria_count = len(self.assessment.criteria) if self.assessment else 0
+            await self.status(
+                "analyzing",
+                "Reviewing evidence and checking remaining questions…"
+                if decision
+                else f"Planning research for {criteria_count} "
+                f"{'criterion' if criteria_count == 1 else 'criteria'}…"
+                if criteria_count
+                else "Planning the most relevant career searches…",
+            )
             result = await self.turn(
                 "query_analyzer",
                 messages,
-                SUPERVISOR_TOOLS
-                if self.database_attempted
-                else [item for item in SUPERVISOR_TOOLS if item["name"] != "rag_agent"],
+                SUPERVISOR_TOOLS,
                 ANALYZER_RULES,
                 required=True,
             )
@@ -690,7 +748,7 @@ class Run:
             if compose and not research:
                 try:
                     composition = Compose.model_validate(compose[0].arguments)
-                    if self.database_attempted or composition.mode == "clarify":
+                    if self.operations or composition.mode == "clarify":
                         self.composition = composition
                         return
                 except ValidationError:
@@ -704,36 +762,32 @@ class Run:
                     }
                 )
                 continue
-            database_first = not self.database_attempted
             outcomes = await asyncio.gather(
-                *(
-                    self.dispatch(call, database_first=database_first)
-                    for call in research[:MAX_OPERATIONS]
-                )
+                *(self.dispatch(call) for call in research[: self.operation_limit])
             )
             outputs = {
                 call.id: {"error": "Too many simultaneous retrieval requests."}
-                for call in research[MAX_OPERATIONS:]
+                for call in research[self.operation_limit :]
             }
             outputs.update(
                 {
                     call.id: self.planner_evidence(output)
                     for call, output in zip(
-                        research[:MAX_OPERATIONS], outcomes, strict=True
+                        research[: self.operation_limit], outcomes, strict=True
                     )
                 }
             )
             outputs.update(
                 {
                     call.id: {
-                        "error": "Complete database research first, then call "
+                        "error": "Complete research first, then call "
                         "compose_answer alone; only clarification may skip research."
                     }
                     for call in compose
                 }
             )
             messages = providers.append_results(messages, result, outputs)
-            if self.operations >= MAX_OPERATIONS:
+            if self.operations >= self.operation_limit:
                 break
         self.limitations.append(
             "The research limit was reached; answer only from verified evidence "
@@ -973,7 +1027,12 @@ class Run:
     async def produce(self):
         deadline = asyncio.get_running_loop().time() + SEARCH_SECONDS + ANSWER_SECONDS
         try:
-            await self.status("analyzing", "Understanding your question…")
+            await self.status(
+                "database" if self.request.action else "analyzing",
+                "Reading the selected career details…"
+                if self.request.action
+                else "Understanding your question…",
+            )
             research_deadline = asyncio.get_running_loop().time() + SEARCH_SECONDS
             async with asyncio.timeout_at(research_deadline):
                 if self.request.action:
@@ -1013,13 +1072,13 @@ class Run:
                     "Research could not be completed. Use only verified evidence "
                     "and explain what remains unknown."
                 )
-            if not self.database_attempted and self.composition.mode != "clarify":
+            if not self.results and self.composition.mode != "clarify":
                 self.composition = Compose(
                     mode="clarify",
-                    guidance="Database research did not complete. Explain that the "
+                    guidance="Research did not complete. Explain that the "
                     "answer could not be verified. Do not assert facts or counts.",
                 )
-            if self.assessment.intent == "role_fit":
+            if self.assessment.criteria:
                 covered = {
                     criterion
                     for result in self.results
@@ -1030,11 +1089,13 @@ class Run:
                         self.limitations.append(
                             f"Not researched: {criterion.requirement}."
                         )
-                if not any(
+                if self.assessment.intent == "role_fit" and not any(
                     item.get("match_type") == "related" for item in self.results
                 ):
                     self.limitations.append("Transferable experience was not verified.")
-            await self.status("answering", "Preparing your answer…")
+            await self.status(
+                "answering", "Combining results and preparing your answer…"
+            )
             config = self.prepared.config
             generation = agent_generation(config, "representative")
             messages = bounded_history(self.request) + [

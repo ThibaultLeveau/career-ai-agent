@@ -162,9 +162,8 @@ def test_zero_exact_matches_remains_separate_from_related(monkeypatch):
         (0, "exact"),
         (3, "related"),
     ]
-    assert output.index("No recorded projects") < output.index(
-        "Searching related experience"
-    )
+    assert output.index("No matching records") < output.index("database-separate")
+    assert "result rows" not in output
 
 
 def test_failed_rag_preserves_verified_database_evidence(monkeypatch):

@@ -73,8 +73,17 @@
 .answer-table th, .answer-table td { min-width: 110px; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .answer-table th { background: var(--surface-subtle); color: var(--text); font-weight: 600; }
 .answer-table tr:last-child td { border-bottom: 0; }
-.thinking { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: 12px; margin: 10px 0 0; }
-.thinking > span { color: var(--accent); letter-spacing: 1px; animation: thinking-pulse 1.6s ease-in-out infinite; }
+.thinking { display: grid; gap: 9px; color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: 0 0 20px; }
+.activity-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; animation: activity-enter .22s ease-out both; }
+.activity-copy { min-width: 0; overflow-wrap: anywhere; }
+.activity-copy strong { color: var(--text-secondary); font-weight: 600; transition: color .2s; }
+.activity-message { transition: color .2s; }
+.activity-indicator { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+.activity-dots > span { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: thinking-pulse 1.4s ease-in-out infinite; }
+.activity-dots > span:nth-child(2) { animation-delay: .16s; }
+.activity-dots > span:nth-child(3) { animation-delay: .32s; }
+.activity-row[data-state="complete"] .activity-indicator { color: var(--success); }
+.activity-row[data-state="complete"] strong, .activity-row[data-state="error"] strong, .activity-row[data-state="error"] .activity-indicator { color: var(--text-muted); }
 .chat-sources { margin-top: 18px; font-size: 11px; color: var(--text-muted); }
 .chat-sources summary { cursor: pointer; width: fit-content; }
 .chat-sources summary > span { display: inline-grid; place-items: center; border-radius: 4px; background: var(--surface-hover); font-size: 9px; margin-left: 3px; min-width: 15px; padding: 0 3px; }
@@ -179,6 +188,7 @@
   .career-card-mark { width: 38px; height: 38px; line-height: 38px; font-size: 25px; }
 }
 @keyframes thinking-pulse { 50% { opacity: .35; } }
+@keyframes activity-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (min-width: 1000px) and (min-height: 850px) { .chat-main { padding-bottom: 150px; } }
 @media (max-width: 640px) {
   .portfolio-header { padding: 22px 22px; gap: 12px; }
@@ -202,6 +212,9 @@
   .has-conversation .chat-main { padding-top: 18px; }
   .chat-question { max-width: 94%; font-size: 13px; }
   .answer-content { font-size: 13px; }
+  .thinking { gap: 11px; }
+  .activity-copy strong, .activity-message { display: block; }
+  .activity-separator { display: none; }
   .has-conversation .composer-area { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 @media (max-width: 420px) {
