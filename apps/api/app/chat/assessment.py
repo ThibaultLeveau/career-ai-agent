@@ -65,7 +65,13 @@ object matching the supplied schema, with no Markdown fences or extra prose.
   enough to discover relevant skills even when not named by the visitor. Never assume
   that Thibault actually has these skills before research.
 For career and role_fit requests use at most eight criteria (IDs c1, c2, ...), grouping
-related conditions when necessary without dropping explicit constraints. A broad
+related conditions when necessary without dropping explicit constraints. Every
+criterion must include a short, specific display label of 1-40 characters in the
+visitor's language. Name the actual skills, role, action, or condition being checked,
+for example "Python + Docker backend". Omit request boilerplate such as "List projects
+where" or "Experience with"; put the distinguishing terms first. Keep the complete
+constraints and relationships in requirement; the label is only for progress display
+and must not replace or weaken the full requirement. A broad
 narrative request without specific criteria may leave criteria empty. For all
 non-redirect requests leave reply empty. A general request to explain a technology
 is a redirect; asking how Thibault used that technology is a career question. A career
@@ -81,6 +87,11 @@ class StrictModel(BaseModel):
 
 class Criterion(StrictModel):
     id: str = Field(pattern=r"^c[1-8]$")
+    label: str = Field(
+        min_length=1,
+        max_length=40,
+        description="Progress label naming the skill, role, action, or condition.",
+    )
     requirement: str = Field(min_length=1, max_length=400)
     origin: Literal["explicit", "inferred"]
 

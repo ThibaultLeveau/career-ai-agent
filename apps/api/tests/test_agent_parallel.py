@@ -26,7 +26,12 @@ def make_run(criteria=0):
         intent="role_fit" if criteria else "career",
         question=value.request.message,
         criteria=[
-            {"id": f"c{i}", "requirement": f"Requirement {i}", "origin": "explicit"}
+            {
+                "id": f"c{i}",
+                "label": f"Criterion {i}",
+                "requirement": f"Requirement {i}",
+                "origin": "explicit",
+            }
             for i in range(1, criteria + 1)
         ],
         search_queries=["Direct experience", "Transferable experience"]

@@ -641,7 +641,7 @@ class Run:
                 lane = "rag-scoped" if task.result_set is not None else "rag-broad"
             criteria = (
                 {
-                    item.id: item.requirement
+                    item.id: item.label
                     for item in self.assessment.criteria
                     if item.id in task.criterion_ids
                 }

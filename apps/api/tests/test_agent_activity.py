@@ -16,7 +16,12 @@ def make_run(intent="career", criteria=0):
         intent=intent,
         question=value.request.message,
         criteria=[
-            {"id": f"c{i}", "requirement": f"Requirement {i}", "origin": "explicit"}
+            {
+                "id": f"c{i}",
+                "label": f"Criterion {i}",
+                "requirement": f"Requirement {i}",
+                "origin": "explicit",
+            }
             for i in range(1, criteria + 1)
         ],
         search_queries=["Direct experience", "Transferable experience"]
@@ -69,8 +74,8 @@ def test_parallel_activity_starts_before_specialists_and_preserves_other_lane(
 ):
     async def run():
         value = make_run(criteria=2)
-        value.assessment.criteria[0].requirement = "Python"
-        value.assessment.criteria[1].requirement = "backend"
+        value.assessment.criteria[0].label = "Python"
+        value.assessment.criteria[1].label = "backend"
         started = {role: asyncio.Event() for role in ("database", "rag")}
         release = {role: asyncio.Event() for role in started}
 
@@ -147,12 +152,12 @@ def test_database_groups_count_unique_criteria_and_remain_running_until_all_fini
 ):
     async def run():
         value = make_run(intent=intent, criteria=5)
-        for criterion, requirement in zip(
+        for criterion, label in zip(
             value.assessment.criteria,
             ["Python", "backend", "leadership", "delivery", "operations"],
             strict=True,
         ):
-            criterion.requirement = requirement
+            criterion.label = label
         started = [asyncio.Event() for _ in range(3)]
         release = [asyncio.Event() for _ in started]
 
@@ -225,7 +230,38 @@ def test_database_groups_count_unique_criteria_and_remain_running_until_all_fini
     asyncio.run(asyncio.wait_for(run(), timeout=5))
 
 
-def test_eight_long_unicode_criteria_fit_public_status_message_limits(monkeypatch):
+def test_database_activity_names_the_requirement_instead_of_truncating_it(monkeypatch):
+    async def run():
+        value = make_run(criteria=1)
+        criterion = value.assessment.criteria[0]
+        criterion.label = "Python + Docker backend"
+        requirement = (
+            "List projects where Thibault used both Python and Docker "
+            "for backend development on the same project."
+        )
+        criterion.requirement = requirement
+
+        async def database(self, task):
+            return {"total": 1}
+
+        monkeypatch.setattr(agents.Run, "database", database)
+        await value.dispatch(
+            call(
+                "database_agent",
+                {"question": "Matching projects", "criterion_ids": ["c1"]},
+            )
+        )
+        message = lines(statuses(value)[0])["database"]["message"]
+        assert "(Python + Docker backend)" in message
+        assert "List projects" not in message
+        assert value.request_context()["assessment"]["criteria"][0]["requirement"] == (
+            requirement
+        )
+
+    asyncio.run(run())
+
+
+def test_eight_unicode_criterion_labels_fit_public_status_message_limits(monkeypatch):
     async def run():
         value = make_run(criteria=8)
         names = [
@@ -239,7 +275,7 @@ def test_eight_long_unicode_criteria_fit_public_status_message_limits(monkeypatc
             "Collaboration",
         ]
         for criterion, name in zip(value.assessment.criteria, names, strict=True):
-            criterion.requirement = f"{name}\n\t" + "🚀" * 80 + "    expérience"
+            criterion.label = (f"{name}\n\t" + "🚀" * 40)[:40]
         started = [asyncio.Event() for _ in range(2)]
         release = asyncio.Event()
 
