@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { PublicHeader } from "@/components/public-header";
 import { ChatAnswer } from "@/components/chat-answer";
+import { ChatActivityView } from "@/components/chat-activity";
 import { ChatComponentView } from "@/components/chat-components";
 import type { DetailAction } from "@/lib/chat-components";
 import {
   completedHistory,
+  chatActivityAnnouncement,
   readChatStream,
   type ChatSource,
   type ChatTurn,
@@ -111,7 +113,7 @@ export function CareerChat() {
     setTurns([...previous, turn]);
     setDraft("");
     setBusy(true);
-    setAnnouncement("Thinking about your question.");
+    setAnnouncement(chatActivityAnnouncement());
     input.current?.focus();
     try {
       const response = await fetch("/api/chat", {
@@ -128,7 +130,7 @@ export function CareerChat() {
           : "My career assistant is temporarily unavailable. Please try again shortly.");
       }
       const sources = await readChatStream(response, (text) => {
-        if (active.current === request)
+        if (active.current === request) {
           updateTurn(id, (current) => {
             const blocks = [...current.blocks];
             const last = blocks.at(-1);
@@ -136,17 +138,22 @@ export function CareerChat() {
             else blocks.push({ type: "text", text });
             return { answer: current.answer + text, blocks, activity: undefined };
           });
+          setAnnouncement(chatActivityAnnouncement(undefined, true));
+        }
       }, (activity) => {
         if (active.current === request) {
           updateTurn(id, { activity });
-          setAnnouncement(activity.message);
+          setAnnouncement(chatActivityAnnouncement(activity));
         }
       }, (component) => {
-        if (active.current === request) updateTurn(id, (current) => ({
-          answer: `${current.answer}\n\n${component.introduction}`.trim(),
-          blocks: [...current.blocks, { type: "component", ...component }],
-          activity: undefined,
-        }));
+        if (active.current === request) {
+          updateTurn(id, (current) => ({
+            answer: `${current.answer}\n\n${component.introduction}`.trim(),
+            blocks: [...current.blocks, { type: "component", ...component }],
+            activity: undefined,
+          }));
+          setAnnouncement(chatActivityAnnouncement(undefined, true));
+        }
       });
       if (active.current !== request) return;
       updateTurn(id, { status: "complete", sources, activity: undefined });
@@ -216,6 +223,7 @@ export function CareerChat() {
                 <div className="chat-question"><span className="sr-only">You: </span>{turn.question}</div>
                 <div className="chat-answer">
                   <div className="answer-identity"><span className="answer-mark" aria-hidden="true">✳</span><span>Thibault’s assistant<small>AI</small></span></div>
+                  {turn.status === "pending" && <ChatActivityView activity={turn.activity} writing={turn.blocks.length > 0} />}
                   {turn.blocks.map((block, blockIndex) => block.type === "text"
                     ? <div className="answer-content" key={blockIndex}><ChatAnswer text={block.text} /></div>
                     : <div className="answer-component" key={blockIndex}>
@@ -230,7 +238,6 @@ export function CareerChat() {
                           }));
                         }} />
                     </div>)}
-                  {turn.status === "pending" && <p className="thinking" data-stage={turn.activity?.stage}><span aria-hidden="true">• • •</span>{turn.activity?.message ?? (turn.answer ? "Still writing…" : "Thinking about your question…")}</p>}
                   {turn.status === "complete" && <SourceList sources={turn.sources} />}
                   {turn.status === "error" && <p className="chat-error" role="alert">{turn.error}</p>}
                   {turn.status === "stopped" && <p className="chat-stopped">Response stopped.</p>}

@@ -10,6 +10,7 @@ type Reply = {
   parts?: string[];
   delay?: number;
   fragmentBytes?: number;
+  controlled?: boolean;
   open?: boolean;
   status?: number;
   detail?: string;
@@ -17,6 +18,7 @@ type Reply = {
 type Harness = Window & {
   chatRequests: ChatRequest[];
   chatAborts: number;
+  advanceChatStream?: () => void;
 };
 
 function reply(text: string, sources: unknown[] = []): Reply {
@@ -60,7 +62,7 @@ async function mockChat(page: Page, replies: Reply[]) {
             if (closed) return;
             if (part < parts.length) {
               controller.enqueue(parts[part++]);
-              timer = setTimeout(next, response.delay ?? 5);
+              if (!response.controlled) timer = setTimeout(next, response.delay ?? 5);
             } else if (!response.open) {
               closed = true;
               controller.close();
@@ -74,7 +76,8 @@ async function mockChat(page: Page, replies: Reply[]) {
               controller.error(new DOMException("Aborted", "AbortError"));
             }
           }, { once: true });
-          timer = setTimeout(next, response.delay ?? 5);
+          if (response.controlled) harness.advanceChatStream = next;
+          else timer = setTimeout(next, response.delay ?? 5);
         },
         cancel() {
           closed = true;
@@ -88,6 +91,14 @@ async function mockChat(page: Page, replies: Reply[]) {
 
 async function requests(page: Page): Promise<ChatRequest[]> {
   return page.evaluate(() => (window as unknown as Harness).chatRequests);
+}
+
+function streamEvent(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+async function advanceChatStream(page: Page) {
+  await page.evaluate(() => (window as unknown as Harness).advanceChatStream?.());
 }
 
 test("public homepage makes the conversation clear on desktop and mobile", async ({ page }) => {
@@ -163,6 +174,140 @@ test("shows agent activity before the answer and keeps it out of completed histo
   await page.getByLabel("Ask about my career").press("Enter");
   await expect(page.locator(".answer-content").last()).toHaveText("Here is more detail.");
   expect((await requests(page))[1].history[1].content).toBe("I found separate examples.");
+});
+
+test("shows parallel agents, updates completed work, and replaces research when preparing the answer", async ({ page }) => {
+  const combined = { id: "database-combined", agent: "Database Agents", message: "Checking 3 criteria together (AI, Python, PHP)…", state: "running" };
+  const separate = { id: "database-separate", agent: "Database Agents", message: "Checking 2 criteria separately (leadership, delivery)…", state: "running" };
+  const rag = { id: "rag-broad", agent: "RAG Agents", message: "Searching 3 broad text queries…", state: "running" };
+  await mockChat(page, [{
+    controlled: true,
+    parts: [
+      streamEvent("status", { stage: "analysis", message: "Understanding your question…", activities: [{ id: "analyzer", agent: "Query Analyzer Agent", message: "Understanding your question…", state: "running" }] }),
+      streamEvent("status", { stage: "research", message: "Searching career evidence…", activities: [combined, separate, rag] }),
+      streamEvent("status", { stage: "research", message: "Searching career evidence…", activities: [{ ...combined, message: "Finished checking combined criteria (AI, Python, PHP).", state: "complete" }, separate, rag] }),
+      streamEvent("status", { stage: "answer", message: "Combining results and preparing your answer…", activities: [{ id: "answer", agent: "Answer Agent", message: "Combining results and preparing your answer…", state: "running" }] }),
+      ...reply("I found matching experience and supporting examples.").parts!,
+    ],
+  }, reply("Here is more detail.")]);
+  await page.goto("/");
+  await page.getByLabel("Ask about my career").fill("Find engineering roles combining AI, Python, PHP, leadership and delivery.");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await advanceChatStream(page);
+  const activity = page.getByRole("list", { name: "Agent activity" });
+  await expect(activity).toContainText("Query Analyzer Agent");
+  await expect(activity).toContainText("Understanding your question…");
+  await advanceChatStream(page);
+  await expect(activity.getByRole("listitem")).toHaveCount(3);
+  for (const task of [combined, separate, rag]) {
+    const row = activity.locator(`[data-activity-id="${task.id}"]`);
+    await expect(row).toHaveAttribute("data-state", "running");
+    await expect(row).toContainText(task.agent);
+    await expect(row).toContainText(task.message);
+  }
+  await expect(activity).not.toContainText("Query Analyzer Agent");
+  await captureThemes(page, "portfolio-parallel-agents");
+  await advanceChatStream(page);
+  const finished = activity.locator('[data-activity-id="database-combined"]');
+  await expect(finished).toHaveAttribute("data-state", "complete");
+  await expect(finished.getByRole("img", { name: "Complete", exact: true })).toBeVisible();
+  await expect(finished).toContainText("(AI, Python, PHP)");
+  await expect(activity.locator('[data-activity-id="database-separate"]')).toContainText(separate.message);
+  await expect(activity.locator('[data-activity-id="rag-broad"]')).toHaveAttribute("data-state", "running");
+  await expect(page.getByRole("status")).toContainText("Working in parallel.");
+  await expect(page.getByRole("status")).not.toContainText("Finished checking combined criteria");
+  await advanceChatStream(page);
+  await expect(activity.getByRole("listitem")).toHaveCount(1);
+  await expect(activity).toContainText("Answer Agent");
+  await expect(activity).toContainText("Combining results and preparing your answer…");
+  await expect(activity).not.toContainText("Searching");
+  await advanceChatStream(page);
+  await expect(page.locator(".answer-content")).toHaveText("I found matching experience and supporting examples.");
+  await expect(activity.getByRole("listitem")).toHaveCount(1);
+  await expect(activity).toContainText("Answer Agent");
+  await expect(activity).toContainText("Writing your answer…");
+  await expect(activity).not.toContainText("Searching");
+  await advanceChatStream(page);
+  await expect(page.locator(".thinking")).toHaveCount(0);
+  await page.getByLabel("Ask about my career").fill("Tell me more.");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.locator(".answer-content").last()).toHaveText("Here is more detail.");
+  expect((await requests(page))[1].history).toEqual([
+    { role: "user", content: "Find engineering roles combining AI, Python, PHP, leadership and delivery." },
+    { role: "assistant", content: "I found matching experience and supporting examples." },
+  ]);
+});
+
+test("handles malformed activity snapshots safely and clears failed research before retrying", async ({ page }) => {
+  await mockChat(page, [
+    { parts: [streamEvent("status", { stage: "database", message: "Checking matching experience…", activities: { invalid: true } })] },
+    { parts: [streamEvent("status", { stage: "retrieval", message: "Looking for supporting context…", activities: [null, {}, { id: "rag-broad", agent: "RAG Agents", message: "Invalid state", state: "unknown" }] })] },
+    {
+      controlled: true,
+      parts: [
+        streamEvent("status", { stage: "retrieval", message: "Searching supporting text…", activities: [{ id: "rag-broad", agent: "RAG Agents", message: "Searching supporting text…", state: "running" }] }),
+        streamEvent("error", { message: "Please try again shortly." }),
+      ],
+    },
+    reply("A fresh answer."),
+  ]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "The career overview" }).click();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await expect(page.getByRole("log").getByRole("alert")).toBeVisible();
+    await expect(page.locator(".thinking")).toHaveCount(0);
+    await expect(page.locator(".answer-content")).toHaveCount(0);
+    await page.getByRole("button", { name: "Try again" }).click();
+  }
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await advanceChatStream(page);
+  await expect(page.locator('.thinking [data-activity-id="rag-broad"]')).toHaveAttribute("data-state", "running");
+  await advanceChatStream(page);
+  await expect(page.getByRole("log").getByRole("alert")).toHaveText("Please try again shortly.");
+  await expect(page.locator(".thinking")).toHaveCount(0);
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.locator(".answer-content")).toHaveText("A fresh answer.");
+  expect((await requests(page)).map((request) => request.history)).toEqual([[], [], [], []]);
+});
+
+test("parallel activity fits mobile themes, respects reduced motion, and clears when stopped", async ({ page }) => {
+  const combinedCriteria = "backend platform engineering, AI-assisted knowledge retrieval";
+  const separateCriteria = "cross-functional team leadership, delivery planning";
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await mockChat(page, [{
+    open: true,
+    parts: [streamEvent("status", {
+      stage: "research", message: "Searching career evidence…", activities: [
+        { id: "database-combined", agent: "Database Agents", message: `Checking 2 criteria together (${combinedCriteria})…`, state: "running" },
+        { id: "database-separate", agent: "Database Agents", message: `Checking 2 criteria separately (${separateCriteria})…`, state: "running" },
+        { id: "rag-broad", agent: "RAG Agents", message: "Searching 3 broad text queries…", state: "running" },
+      ],
+    })],
+  }]);
+  await page.goto("/");
+  await page.getByLabel("Ask about my career").fill("Find backend platform engineering and AI-assisted knowledge retrieval projects, with cross-functional team leadership and delivery planning.");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.locator(".thinking [data-state=running]")).toHaveCount(3);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const theme of ["light", "dark"] as const) {
+      await setTheme(page, theme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(page.locator('.thinking [data-activity-id="database-combined"]')).toContainText(combinedCriteria);
+      await expect(page.locator('.thinking [data-activity-id="database-separate"]')).toContainText(separateCriteria);
+      expect(await page.locator(".thinking .activity-message").evaluateAll((messages) => messages.every((message) => {
+        const bounds = message.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= innerWidth;
+      }))).toBe(true);
+      await expect(page.locator('.thinking [data-activity-id="rag-broad"]')).toBeVisible();
+    }
+  }
+  expect(await page.locator(".thinking").evaluate((element) => element.getAnimations({ subtree: true }).filter((animation) => animation.playState === "running").length)).toBe(0);
+  await captureThemes(page, "portfolio-parallel-agents-mobile");
+  await page.getByRole("button", { name: "Stop response" }).click();
+  await expect(page.locator(".thinking")).toHaveCount(0);
+  await expect(page.getByText("Response stopped.", { exact: true }).first()).toBeVisible();
 });
 
 test("accepts fragmented UTF-8 status events and cancels before answer generation", async ({ page }) => {

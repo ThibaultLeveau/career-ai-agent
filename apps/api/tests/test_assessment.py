@@ -38,8 +38,18 @@ def fit():
         intent="role_fit",
         question="Are you a match for a PHP development job?",
         criteria=[
-            {"id": "c1", "requirement": "PHP development", "origin": "explicit"},
-            {"id": "c2", "requirement": "Backend development", "origin": "inferred"},
+            {
+                "id": "c1",
+                "label": "PHP development",
+                "requirement": "PHP development",
+                "origin": "explicit",
+            },
+            {
+                "id": "c2",
+                "label": "Backend development",
+                "requirement": "Backend development",
+                "origin": "inferred",
+            },
         ],
         search_queries=[
             "PHP application work",
@@ -132,6 +142,156 @@ def test_assessment_receives_completed_context_and_validates_criteria(monkeypatc
         assessment.Assessment(intent="redirect", question="Hidden task", reply="Hello")
 
 
+def test_factual_assessment_keeps_explicit_criteria_without_role_fit_semantics(
+    monkeypatch,
+):
+    question = (
+        "How many backend projects used Python and PHP together since 2024? "
+        "Do not suggest alternatives."
+    )
+    criteria = [
+        {
+            "id": "c1",
+            "label": "Backend projects",
+            "requirement": "Backend projects",
+            "origin": "explicit",
+        },
+        {
+            "id": "c2",
+            "label": "Python + PHP together",
+            "requirement": "Python AND PHP on the same project",
+            "origin": "explicit",
+        },
+        {
+            "id": "c3",
+            "label": "Since 2024",
+            "requirement": "Since 2024",
+            "origin": "explicit",
+        },
+        {
+            "id": "c4",
+            "label": "Exact count",
+            "requirement": "Exact count without alternatives",
+            "origin": "explicit",
+        },
+    ]
+
+    async def complete(*args):
+        return json.dumps(
+            {"intent": "career", "question": question, "criteria": criteria}
+        )
+
+    monkeypatch.setattr(providers, "complete", complete)
+    result = asyncio.run(
+        assessment.assess(prepared().config.chat, "key", ChatRequest(message=question))
+    )
+    assert result.intent == "career" and result.question == question
+    assert [item.model_dump() for item in result.criteria] == criteria
+    assert not result.search_queries
+    assert not assessment.Assessment(intent="career", question="My background").criteria
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"search_queries": ["Transferable experience"]},
+        {
+            "criteria": [
+                {
+                    "id": "c1",
+                    "label": "Python",
+                    "requirement": "Python",
+                    "origin": "inferred",
+                }
+            ]
+        },
+        {
+            "criteria": [
+                {
+                    "id": "c1",
+                    "label": "Python",
+                    "requirement": "Python",
+                    "origin": "explicit",
+                },
+                {
+                    "id": "c1",
+                    "label": "PHP",
+                    "requirement": "PHP",
+                    "origin": "explicit",
+                },
+            ]
+        },
+    ],
+)
+def test_factual_assessment_rejects_inferred_or_ambiguous_criterion_ids(updates):
+    with pytest.raises(ValidationError):
+        assessment.Assessment(
+            intent="career", question="Python and PHP project count", **updates
+        )
+
+
+@pytest.mark.parametrize(
+    "label",
+    [{}, {"label": ""}, {"label": " \t "}, {"label": "x" * 41}],
+    ids=["missing", "empty", "whitespace", "too-long"],
+)
+def test_assessment_rejects_missing_or_unusable_progress_labels(label):
+    with pytest.raises(ValidationError) as error:
+        assessment.Assessment(
+            intent="career",
+            question="Python backend experience",
+            criteria=[
+                {
+                    "id": "c1",
+                    "requirement": "Python backend development on the same project",
+                    "origin": "explicit",
+                    **label,
+                }
+            ],
+        )
+    assert [item["loc"] for item in error.value.errors()] == [("criteria", 0, "label")]
+
+
+def test_assessment_keeps_specific_progress_label_and_full_grouped_requirement(
+    monkeypatch,
+):
+    requirement = (
+        "List projects where Thibault used both Python and Docker for backend "
+        "development, on the same project, since 2024; do not suggest alternatives."
+    )
+    calls = []
+
+    async def complete(config, key, prompt, instructions):
+        calls.append(json.loads(prompt))
+        schema = json.loads(instructions.split("\nSchema: ", 1)[1])
+        assert "label" in schema["$defs"]["Criterion"]["required"]
+        return json.dumps(
+            {
+                "intent": "career",
+                "question": requirement,
+                "criteria": [
+                    {
+                        "id": "c1",
+                        "label": "Python + Docker backend",
+                        "requirement": requirement,
+                        "origin": "explicit",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(providers, "complete", complete)
+    result = asyncio.run(
+        assessment.assess(
+            prepared().config.chat, "key", ChatRequest(message=requirement)
+        )
+    )
+    assert len(calls) == 1
+    assert result.criteria[0].label == "Python + Docker backend"
+    assert result.criteria[0].requirement == requirement
+    assert result.question == requirement
+
+
 def test_role_fit_research_keeps_criteria_and_transferable_evidence(monkeypatch):
     async def complete(*args):
         return fit().model_dump_json()
@@ -175,7 +335,7 @@ def test_role_fit_research_keeps_criteria_and_transferable_evidence(monkeypatch)
     async def stream(config, key, messages, instructions, **kwargs):
         context = json.loads(messages[-1]["content"])
         assert context["assessment"]["intent"] == "role_fit"
-        evidence = context["evidence"]
+        evidence = sorted(context["evidence"], key=lambda item: item["criterion_ids"])
         assert [(item["criterion_ids"], item["match_type"]) for item in evidence] == [
             (["c1"], "exact"),
             (["c2"], "related"),

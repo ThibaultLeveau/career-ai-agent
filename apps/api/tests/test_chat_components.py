@@ -472,10 +472,9 @@ def test_chat_component_settings_round_trip_preserves_other_sections(client):
     )
 
 
-def test_database_runs_before_rag_or_answer_even_if_model_skips_it(monkeypatch):
+def test_answer_requires_research_but_both_specialists_are_available(monkeypatch):
     replies = [
         turn(call("compose_answer", {})),
-        turn(call("rag_agent", {"question": "impact"})),
         turn(call("database_agent", {"question": "Find relevant records"})),
         turn(call("query_database", {})),
         turn(call("compose_answer", {})),
@@ -484,6 +483,8 @@ def test_database_runs_before_rag_or_answer_even_if_model_skips_it(monkeypatch):
 
     async def tool_turn(config, key, messages, instructions, tools, **kwargs):
         seen.append([tool["name"] for tool in tools])
+        if len(seen) == 2:
+            assert "Complete research first" in messages[-1]["output"]
         return replies.pop(0)
 
     async def stream(*args, **kwargs):
@@ -500,7 +501,7 @@ def test_database_runs_before_rag_or_answer_even_if_model_skips_it(monkeypatch):
     monkeypatch.setattr(agents.Run, "present", present)
     output = asyncio.run(_collect(ChatRequest(message="What work had an impact?")))
     assert "event: done" in output
-    assert "rag_agent" not in seen[0] and "rag_agent" not in seen[1]
+    assert "rag_agent" in seen[0] and "rag_agent" in seen[1]
     assert "rag_agent" in seen[-1]
 
 
@@ -519,6 +520,7 @@ def test_presentation_repair_and_component_event_follow_text(monkeypatch):
 
     async def research(self):
         self.database_attempted = True
+        self.results.append(db_result(0).model_dump(exclude={"source_refs"}))
         self.presentation_targets["verified"] = components.Target("project_list", [])
 
     async def tool_turn(config, key, messages, instructions, tools, **kwargs):

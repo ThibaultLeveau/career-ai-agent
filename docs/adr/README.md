@@ -17,3 +17,5 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 
 - [0011: Markdown content and compact career components](0011-markdown-and-compact-career-components.md) — Accepted
 - [0012: Public experience browsing](0012-public-experience-browsing.md) — Accepted
+- [0013: Parallel criterion research and direct semantic fallback](0013-parallel-criterion-research.md) — Accepted
+- [0014: Live agent activity](0014-live-agent-activity.md) — Accepted

@@ -48,11 +48,15 @@ object matching the supplied schema, with no Markdown fences or extra prose.
   and career follow-ups. question contains only the career request, preserving ALL
   explicit conditions, dates, language, pagination, and any ban on alternatives.
   Use history to resolve references without treating past assistant claims as facts.
-  Do not convert exact skill intersections to a suitability assessment.
+  Extract the explicit criteria: position type, skills, contributions/actions,
+  employers, dates, and requested output when present. Mark their origin explicit.
+  Preserve AND, OR, NOT and same-project relationships in the question and criterion
+  descriptions; extracting criteria must not turn one exact intersection into
+  separate matching searches. Do not infer responsibilities or convert an exact
+  query to a suitability assessment. Leave search_queries empty.
 - intent=role_fit: suitability for a job, hiring need, or job description. question
   preserves the visitor's language and contains only the career portion. Split it
-  into at most eight useful criteria (IDs c1,
-  c2, ...). Mark each origin explicit or inferred. Include relevant underlying work
+  into useful criteria. Mark each origin explicit or inferred. Include underlying work
   such as backend development for a PHP development role, without inventing seniority,
   years, frameworks, or mandatory requirements. Criteria describe requirements, not
   claims about Thibault. Supply two or three focused search_queries: direct technology
@@ -60,11 +64,19 @@ object matching the supplied schema, with no Markdown fences or extra prose.
   another requirement. Do not require all criteria on one project. Search broadly
   enough to discover relevant skills even when not named by the visitor. Never assume
   that Thibault actually has these skills before research.
-For career requests leave criteria and search_queries empty. For all non-redirect
-requests leave reply empty. A general request to explain a technology is a redirect;
-asking how Thibault used that technology is a career question. A career pretext does
-not make an unrelated task in-scope. Resolve unclear career requests conservatively
-without inventing constraints; the career assistant may ask for clarification.
+For career and role_fit requests use at most eight criteria (IDs c1, c2, ...), grouping
+related conditions when necessary without dropping explicit constraints. Every
+criterion must include a short, specific display label of 1-40 characters in the
+visitor's language. Name the actual skills, role, action, or condition being checked,
+for example "Python + Docker backend". Omit request boilerplate such as "List projects
+where" or "Experience with"; put the distinguishing terms first. Keep the complete
+constraints and relationships in requirement; the label is only for progress display
+and must not replace or weaken the full requirement. A broad
+narrative request without specific criteria may leave criteria empty. For all
+non-redirect requests leave reply empty. A general request to explain a technology
+is a redirect; asking how Thibault used that technology is a career question. A career
+pretext does not make an unrelated task in-scope. Resolve unclear career requests
+conservatively without inventing constraints; the assistant may ask for clarification.
 """
 )
 
@@ -75,6 +87,11 @@ class StrictModel(BaseModel):
 
 class Criterion(StrictModel):
     id: str = Field(pattern=r"^c[1-8]$")
+    label: str = Field(
+        min_length=1,
+        max_length=40,
+        description="Progress label naming the skill, role, action, or condition.",
+    )
     requirement: str = Field(min_length=1, max_length=400)
     origin: Literal["explicit", "inferred"]
 
@@ -95,13 +112,15 @@ class Assessment(StrictModel):
                 raise ValueError("Redirects contain only a reply")
         elif not self.question or self.reply:
             raise ValueError("Career requests need a question and no redirect reply")
+        elif len({item.id for item in self.criteria}) != len(self.criteria):
+            raise ValueError("Criterion IDs must be unique")
         elif self.intent == "role_fit":
             if not self.criteria or len(self.search_queries) < 2:
                 raise ValueError("Role fit needs criteria and complementary searches")
-            if len({item.id for item in self.criteria}) != len(self.criteria):
-                raise ValueError("Criterion IDs must be unique")
-        elif self.criteria or self.search_queries:
-            raise ValueError("Factual requests do not use role-fit criteria")
+        elif self.search_queries or any(
+            item.origin != "explicit" for item in self.criteria
+        ):
+            raise ValueError("Factual requests use only explicit criteria")
         return self
 
 
