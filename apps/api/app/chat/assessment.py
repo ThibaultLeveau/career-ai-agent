@@ -77,6 +77,36 @@ non-redirect requests leave reply empty. A general request to explain a technolo
 is a redirect; asking how Thibault used that technology is a career question. A career
 pretext does not make an unrelated task in-scope. Resolve unclear career requests
 conservatively without inventing constraints; the assistant may ask for clarification.
+
+Also classify resume sharing in the resume object. Set requested=true only for an
+explicit request to see/download/send Thibault's resume or CV, or a reply resolving
+the assistant's pending resume-variant clarification. Set only=true when that is the
+whole request, without a factual career question; these requests do not need research.
+Set opportunity=true when the current conversation discusses a hiring opportunity
+for Thibault, including vague offers. When opportunity=true with no direct resume
+request but the explicit role or explicit requirements are missing, supply
+missing_details_question: one concise targeted question in the visitor's language
+asking for those missing job details.
+Otherwise leave missing_details_question empty. The interface appends this question.
+Incomplete hiring introductions that need missing_details_question use intent=career,
+not role_fit. Leave search_queries empty and keep only explicitly stated criteria
+(which may be empty). Do not invent a role or criteria merely to satisfy role_fit.
+Populate role and requirements separately from the visitor's explicit hiring needs:
+role names a role or role family; requirements are responsibilities, skills, or other
+stated requirements. Only an explicit role AND at least one explicit requirement
+allow an automatic offer. Use the visitor's statements across
+completed turns, never inferred requirements or previous assistant claims. A generic
+question about past jobs, general suitability, or a technology does not qualify.
+Do not carry a past opportunity into an unrelated new career question. If the role
+or requirement is missing, leave that field empty and never promise a resume.
+requested_language is only
+an explicitly requested resume language, including a reply to a language clarification;
+do not infer it from the conversation language. For an eligible resume request, supply
+unavailable_reply: one short sentence in the visitor's language saying that a suitable
+resume is not available to share right now. Do not claim a file exists or invent links.
+Supply introduction: a short neutral invitation to download the resume, in the
+visitor's language, without asserting suitability or qualifications.
+Redirects leave resume empty. Resume selection metadata is not career evidence.
 """
 )
 
@@ -96,6 +126,45 @@ class Criterion(StrictModel):
     origin: Literal["explicit", "inferred"]
 
 
+class ResumeContext(StrictModel):
+    requested: bool = False
+    only: bool = False
+    opportunity: bool = False
+    role: str = Field(default="", max_length=200)
+    requirements: list[Annotated[str, Field(min_length=1, max_length=400)]] = Field(
+        default_factory=list, max_length=8
+    )
+    requested_language: str = Field(default="", max_length=80)
+    missing_details_question: str = Field(default="", max_length=400)
+    introduction: str = Field(
+        default="You can download my resume here.", min_length=1, max_length=400
+    )
+    unavailable_reply: str = Field(
+        default="I don't have a suitable resume available to share right now.",
+        min_length=1,
+        max_length=400,
+    )
+
+    @model_validator(mode="after")
+    def consistent(self) -> Self:
+        if self.only and not self.requested:
+            raise ValueError("A resume-only request must explicitly request a resume")
+        needs_details = (
+            self.opportunity
+            and not self.requested
+            and not (self.role and self.requirements)
+        )
+        if needs_details != bool(self.missing_details_question):
+            raise ValueError("Incomplete opportunities need one job-details question")
+        return self
+
+    @property
+    def eligible(self) -> bool:
+        return self.requested or bool(
+            self.opportunity and self.role and self.requirements
+        )
+
+
 class Assessment(StrictModel):
     intent: Literal["career", "role_fit", "redirect"]
     question: str = Field(default="", max_length=4000)
@@ -104,12 +173,15 @@ class Assessment(StrictModel):
         default_factory=list, max_length=3
     )
     reply: str = Field(default="", max_length=600)
+    resume: ResumeContext = Field(default_factory=ResumeContext)
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
         if self.intent == "redirect":
             if not self.reply or self.question or self.criteria or self.search_queries:
                 raise ValueError("Redirects contain only a reply")
+            if self.resume.eligible or self.resume.only:
+                raise ValueError("Redirects cannot offer resumes")
         elif not self.question or self.reply:
             raise ValueError("Career requests need a question and no redirect reply")
         elif len({item.id for item in self.criteria}) != len(self.criteria):

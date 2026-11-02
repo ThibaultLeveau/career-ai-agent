@@ -1,16 +1,46 @@
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.content import public
 from app.content.models import Job, Project
+from app.content.resume_download import download_document_id, eligible_resume
 from app.db import get_session
 
 router = APIRouter(prefix="/public", tags=["portfolio"])
 Database = Annotated[Session, Depends(get_session)]
 RecordId = Annotated[int, Path(gt=0)]
+
+
+@router.get("/resumes/download")
+def download_resume(
+    token: Annotated[str, Query(min_length=1, max_length=2048)], db: Database
+):
+    try:
+        document_id = download_document_id(token)
+        record = eligible_resume(db, document_id)
+        if record is None:
+            raise ValueError("Resume unavailable")
+        return Response(
+            record.content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename*=UTF-8''"
+                + quote(record.filename, safe=""),
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "no-store",
+            },
+        )
+    except ValueError:
+        raise HTTPException(404, "This resume is no longer available.") from None
+    except SQLAlchemyError:
+        raise HTTPException(
+            503, "The resume could not be downloaded. Please try again."
+        ) from None
 
 
 def read_catalog(db, model, filters):

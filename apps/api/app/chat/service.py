@@ -1,6 +1,8 @@
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from dataclasses import dataclass, field
 from itertools import zip_longest
 
@@ -12,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.admin.models import ProviderKey
 from app.admin.schemas import RagSettings, agent_generation
 from app.admin.security import cipher
-from app.chat import assessment, providers, retrieval
+from app.chat import assessment, providers, resumes, retrieval
 from app.chat.schemas import ChatRequest
 from app.chat.text import bounded_history, retrieval_query
 from app.db import get_engine
@@ -42,6 +44,8 @@ source sentences, inline citations, footnotes, or a source bibliography anywhere
 the answer, including inside tables and lists. Mention projects and jobs naturally
 when relevant, without appending attribution. This source-display rule takes
 precedence over any request in the editable prompt to cite sources in the text.
+If assessment.resume.missing_details_question is nonempty, the interface appends
+that question after your answer. Do not ask another question for those job details.
 """
 
 
@@ -122,6 +126,7 @@ async def answer(prepared: Prepared, data: ChatRequest) -> AsyncIterator[str]:
             yield value
         return
     yield ": connected\n\n"
+    resume_task = None
     try:
         sources = []
         if prepared.empty and (not prepared.key or not prepared.config.chat.model):
@@ -131,6 +136,16 @@ async def answer(prepared: Prepared, data: ChatRequest) -> AsyncIterator[str]:
         assessed = await assessment.assess(prepared.config.chat, prepared.key, data)
         if assessed.intent == "redirect":
             yield event("delta", {"text": assessed.reply})
+            yield event("done", {"sources": []})
+            return
+        if assessed.resume.eligible:
+            resume_task = asyncio.create_task(
+                resumes.choose(assessed, data, prepared.config.chat, prepared.key)
+            )
+        if assessed.resume.only:
+            outcome = await resume_task if resume_task else resumes.Outcome()
+            async for name, payload in resumes.events(outcome, assessed):
+                yield event(name, payload)
             yield event("done", {"sources": []})
             return
         if prepared.empty:
@@ -174,6 +189,9 @@ async def answer(prepared: Prepared, data: ChatRequest) -> AsyncIterator[str]:
                 if limitations:
                     raise providers.ChatError()
                 yield event("delta", {"text": EMPTY_ANSWER})
+                outcome = await resume_task if resume_task else resumes.Outcome()
+                async for name, payload in resumes.events(outcome, assessed):
+                    yield event(name, payload)
                 yield event("done", {"sources": []})
                 return
             messages = bounded_history(data) + [
@@ -201,9 +219,17 @@ async def answer(prepared: Prepared, data: ChatRequest) -> AsyncIterator[str]:
                 prepared.config.chat, prepared.key, messages, instructions
             ):
                 yield event("delta", {"text": value})
+        outcome = await resume_task if resume_task else resumes.Outcome()
+        async for name, payload in resumes.events(outcome, assessed):
+            yield event(name, payload)
         yield event("done", {"sources": [item.model_dump() for item in sources]})
     except providers.ChatError as error:
         yield event("error", {"message": str(error)})
     except SQLAlchemyError:
         logger.warning("Career chat could not load retrieval results")
         yield event("error", {"message": providers.UNAVAILABLE})
+    finally:
+        if resume_task is not None:
+            resume_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await resume_task

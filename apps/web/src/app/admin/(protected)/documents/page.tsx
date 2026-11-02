@@ -9,7 +9,7 @@ export default async function Page() {
   return (
     <div className="admin-content">
       <PageTitle eyebrow="WORKSPACE" title="Documents">
-        Your resume PDFs, in one place.
+        Organize your PDFs and choose which resumes to share in chat.
       </PageTitle>
       <DocumentsList documents={records} />
     </div>

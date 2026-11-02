@@ -2,9 +2,10 @@ import os
 from urllib.parse import unquote
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import func, inspect, select
 
 from app.content.models import Document
+from app.ingestion.models import IngestionJob, Source
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_ADMIN_DB"),
@@ -213,6 +214,10 @@ def test_document_roundtrip_replacement_and_deletion(signed_in, db):
     assert response.status_code == 201, response.text
     doc = response.json()
     assert doc["filename"] == "résumé.pdf" and doc["size"] == len(PDF)
+    assert doc["document_type_key"] == "other"
+    assert doc["document_type_name"] == "Other"
+    assert doc["available_in_chat"] is False
+    assert doc["matching_notes"] == ""
     assert "content" not in doc
     db.expunge_all()
     stored = db.scalar(select(Document))
@@ -290,3 +295,129 @@ def test_document_boundary_size_and_required_fields(signed_in):
         ).status_code
         == 422
     )
+
+
+def test_document_type_catalog_access_and_additions(client, signed_in):
+    types = client.get("/admin/document-types").json()
+    assert types == [
+        {"key": "other", "name": "Other", "is_builtin": True},
+        {"key": "resume", "name": "Resume", "is_builtin": True},
+    ]
+    assert (
+        client.post(
+            "/admin/document-types",
+            json={"name": "Certificate"},
+            headers={"Origin": "https://other.test"},
+        ).status_code
+        == 403
+    )
+    created = client.post("/admin/document-types", json={"name": " Certificate "})
+    assert created.status_code == 201
+    custom = created.json()
+    assert custom["name"] == "Certificate"
+    assert custom["is_builtin"] is False
+    assert custom["key"].startswith("certificate-")
+    assert custom in client.get("/admin/document-types").json()
+    for name in ("certificate", " CERTIFICATE ", "Resume", " other "):
+        assert (
+            client.post("/admin/document-types", json={"name": name}).status_code == 409
+        )
+    for body in ({"name": " "}, {"name": "x" * 101}, {"name": "CV", "key": "resume"}):
+        assert client.post("/admin/document-types", json=body).status_code == 422
+    client.cookies.clear()
+    assert client.get("/admin/document-types").status_code == 401
+    assert (
+        client.post("/admin/document-types", json={"name": "Letter"}).status_code == 401
+    )
+
+
+def test_document_types_sharing_and_metadata_do_not_reingest(signed_in, db):
+    client = signed_in
+    custom = create(client, "document-types", {"name": "Certificate"})
+    response = client.post(
+        "/admin/documents",
+        data={"title": "Backend resume", "document_type_key": "resume"},
+        files={"file": ("resume.pdf", PDF, "application/pdf")},
+    )
+    assert response.status_code == 201
+    document = response.json()
+    assert document["document_type_name"] == "Resume"
+    assert document["available_in_chat"] is False
+    path = f"/admin/documents/{document['id']}"
+    source = db.scalar(select(Source).where(Source.record_id == document["id"]))
+    initial_revision = source.revision
+    initial_jobs = db.scalar(select(func.count()).select_from(IngestionJob))
+    enabled = client.put(
+        path,
+        data={
+            "title": "Backend resume",
+            "available_in_chat": "true",
+            "matching_notes": " English, senior backend roles ",
+        },
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["available_in_chat"] is True
+    assert enabled.json()["matching_notes"] == "English, senior backend roles"
+    omitted = client.put(path, data={"title": "Backend resume"}).json()
+    assert omitted["available_in_chat"] is True
+    assert omitted["document_type_key"] == "resume"
+    assert omitted["matching_notes"] == "English, senior backend roles"
+    cleared = client.put(
+        path, data={"title": "Backend resume", "matching_notes": ""}
+    ).json()
+    assert cleared["matching_notes"] == ""
+    retyped = client.put(
+        path,
+        data={"title": "Backend resume", "document_type_key": custom["key"]},
+    ).json()
+    assert retyped["document_type_name"] == "Certificate"
+    assert retyped["available_in_chat"] is False
+    resumed = client.put(
+        path, data={"title": "Backend resume", "document_type_key": "resume"}
+    ).json()
+    assert resumed["available_in_chat"] is False
+    db.refresh(source)
+    assert source.revision == initial_revision
+    assert db.scalar(select(func.count()).select_from(IngestionJob)) == initial_jobs
+    assert client.get(f"{path}/file").content == PDF
+    assert client.put(path, data={"title": "Updated backend resume"}).status_code == 200
+    db.refresh(source)
+    assert source.revision == initial_revision + 1
+
+
+def test_document_explicit_resume_selection_can_enable_sharing(signed_in):
+    client = signed_in
+    document = client.post(
+        "/admin/documents",
+        data={"title": "Resume"},
+        files={"file": ("resume.pdf", PDF, "application/pdf")},
+    ).json()
+    enabled = client.put(
+        f"/admin/documents/{document['id']}",
+        data={
+            "title": "Resume",
+            "document_type_key": "resume",
+            "available_in_chat": "true",
+        },
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["available_in_chat"] is True
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"document_type_key": "missing"},
+        {"available_in_chat": "true"},
+        {"matching_notes": "x" * 2001},
+        {"available_in_chat": "invalid"},
+    ],
+)
+def test_invalid_document_metadata(signed_in, fields):
+    response = signed_in.post(
+        "/admin/documents",
+        data={"title": "Resume", **fields},
+        files={"file": ("resume.pdf", PDF, "application/pdf")},
+    )
+    assert response.status_code == 422
+    assert signed_in.get("/admin/documents").json() == []

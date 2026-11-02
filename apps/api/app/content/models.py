@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -113,13 +114,44 @@ class Skill(Record, Base):
     __table_args__ = (Index("uq_skill_keyword", func.lower(keyword), unique=True),)
 
 
+class DocumentType(Base):
+    __tablename__ = "document_type"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    is_builtin: Mapped[bool] = mapped_column(default=False, server_default=false())
+    __table_args__ = (Index("uq_document_type_name", func.lower(name), unique=True),)
+
+
 class Document(Record, Base):
     __tablename__ = "document"
     __table_args__ = (
         CheckConstraint("size > 0 AND size <= 10485760", name="document_size"),
+        CheckConstraint(
+            "NOT available_in_chat OR document_type_key = 'resume'",
+            name="document_chat_resume_only",
+        ),
     )
 
     title: Mapped[str] = mapped_column(String(200))
     filename: Mapped[str] = mapped_column(String(255))
     size: Mapped[int]
     content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    document_type_key: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("document_type.key", ondelete="RESTRICT"),
+        default="other",
+        server_default="other",
+        index=True,
+    )
+    document_type: Mapped[DocumentType] = relationship(lazy="joined")
+    available_in_chat: Mapped[bool] = mapped_column(
+        default=False, server_default=false()
+    )
+    matching_notes: Mapped[str] = mapped_column(
+        String(2000), default="", server_default=""
+    )
+
+    @property
+    def document_type_name(self) -> str:
+        return self.document_type.name

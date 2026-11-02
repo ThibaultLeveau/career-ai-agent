@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class ComponentReference(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    type: Literal["project", "job"]
+    type: Literal["project", "job", "document"]
     id: int = Field(gt=0)
     label: str = Field(min_length=1, max_length=420)
 
@@ -32,9 +32,13 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=8)
     action: DetailAction | None = None
+    offered_resume_ids: list[int] = Field(default_factory=list, max_length=10000)
+    resume_clarification_asked: bool = False
 
     @model_validator(mode="after")
     def complete_turns(self) -> Self:
+        if any(value <= 0 for value in self.offered_resume_ids):
+            raise ValueError("Resume identities must be positive")
         if len(self.history) % 2 or any(
             item.role != ("user" if index % 2 == 0 else "assistant")
             for index, item in enumerate(self.history)

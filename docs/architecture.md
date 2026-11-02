@@ -35,6 +35,8 @@ Admin endpoints enforce database-backed cookie sessions independently of the web
 
 Career content uses authenticated `/admin/jobs`, `/admin/projects`, `/admin/skills`, and `/admin/documents` CRUD endpoints. Document create/update accepts multipart forms; downloads use `/admin/documents/{id}/file`. The proxy preserves binary bodies and download headers. See [ADR 0003](adr/0003-career-content.md).
 
+Document types are an add-only catalog seeded with Resume and Other. Explicitly enabled resumes can be offered by both chat modes through verified `resume_download` components. Selection reads current PDF text without embeddings and shares the ordinary research deadline. Public download tokens are purpose-separated, and every request checks current type and publication state through `/public/resumes/download`; all other downloads retain admin authentication. Migration 0007 preserves every existing file as Other with sharing off. See [ADR 0015](adr/0015-contextual-resume-downloads.md).
+
 The dedicated worker claims PostgreSQL jobs with row locks and leases, processes source revisions, and publishes complete vector sets atomically. See [ADR 0004](adr/0004-rag-ingestion.md).
 
 Jobs and projects each serialize to one document before token chunking; project documents contain skill keywords. Skills are not standalone ingestion sources. Admin overview totals count current items rather than historical runs, using the same status rules as row indicators. See [ADR 0005](adr/0005-project-skill-ingestion.md).

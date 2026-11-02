@@ -137,10 +137,20 @@ class JobCard(StrictModel):
     record: JobDetails
 
 
+class ResumeDownload(StrictModel):
+    type: Literal["resume_download"] = "resume_download"
+    id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    filename: str = Field(min_length=1, max_length=255)
+    size: int = Field(gt=0, le=10485760)
+    token: str = Field(min_length=1, max_length=2048)
+
+
 class ComponentEvent(StrictModel):
     introduction: str = Field(min_length=1, max_length=1600)
     component: Annotated[
-        ProjectList | JobList | ProjectCard | JobCard, Field(discriminator="type")
+        ProjectList | JobList | ProjectCard | JobCard | ResumeDownload,
+        Field(discriminator="type"),
     ]
 
 

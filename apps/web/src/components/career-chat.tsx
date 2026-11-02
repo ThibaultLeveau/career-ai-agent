@@ -8,6 +8,7 @@ import { ChatComponentView } from "@/components/chat-components";
 import type { DetailAction } from "@/lib/chat-components";
 import {
   completedHistory,
+  completedResumeState,
   chatActivityAnnouncement,
   readChatStream,
   type ChatSource,
@@ -104,7 +105,8 @@ export function CareerChat() {
     const id = retryId ?? ++nextId.current;
     const previous = retryId === undefined ? turns : turns.filter((turn) => turn.id !== retryId);
     const history = completedHistory(previous);
-    while (history.length && new TextEncoder().encode(JSON.stringify({ message, history, action })).byteLength > 65536)
+    const resumeState = completedResumeState(previous);
+    while (history.length && new TextEncoder().encode(JSON.stringify({ message, history, action, ...resumeState })).byteLength > 65536)
       history.splice(0, 2);
     const request = { id, controller: new AbortController() };
     active.current = request;
@@ -119,7 +121,7 @@ export function CareerChat() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history, ...(action ? { action } : {}) }),
+        body: JSON.stringify({ message, history, ...(action ? { action } : {}), ...resumeState }),
         signal: request.controller.signal,
         cache: "no-store",
       });
@@ -154,6 +156,8 @@ export function CareerChat() {
           }));
           setAnnouncement(chatActivityAnnouncement(undefined, true));
         }
+      }, () => {
+        if (active.current === request) updateTurn(id, { resumeClarificationAsked: true });
       });
       if (active.current !== request) return;
       updateTurn(id, { status: "complete", sources, activity: undefined });

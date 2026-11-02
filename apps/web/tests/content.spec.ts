@@ -265,7 +265,7 @@ test("uploads, renames, replaces, downloads, and deletes PDFs", async ({
   await page.getByRole("link", { name: "Documents", exact: true }).click();
   await page.getByRole("link", { name: "Add document" }).click();
   await page.getByLabel("Title", { exact: true }).fill("English resume");
-  await page.getByLabel("Resume PDF").setInputFiles({
+  await page.getByLabel("Document PDF").setInputFiles({
     name: "resume.pdf",
     mimeType: "application/pdf",
     buffer: pdf,
@@ -339,6 +339,71 @@ test("uploads, renames, replaces, downloads, and deletes PDFs", async ({
   await page.getByRole("button", { name: "Delete Updated resume" }).click();
   await expect(page).toHaveURL(/\/admin\/documents$/);
   expect((await page.request.get(`${endpoint}/file`)).status()).toBe(404);
+});
+
+test("organizes document types and explicitly enables resumes in chat", async ({ page }) => {
+  await page.goto("/admin/documents/new");
+  const documentType = page.getByRole("combobox", { name: "Document type", exact: true });
+  await expect(documentType).toHaveValue("other");
+  await expect(page.getByRole("switch", { name: "Available in chat" })).toHaveCount(0);
+  await page.getByLabel("Title", { exact: true }).fill("Senior backend resume");
+  await page.getByLabel("Document PDF").setInputFiles({
+    name: "backend.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf,
+  });
+  await documentType.selectOption("resume");
+  const sharing = page.getByRole("switch", { name: "Available in chat" });
+  await expect(sharing).not.toBeChecked();
+  await page.getByLabel(/^Matching notes/).fill("English; senior Python backend roles.");
+  await sharing.check();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/documents\/\d+$/);
+  const endpoint = `/api/admin/documents/${page.url().split("/").pop()}`;
+  await page.reload();
+  await expect(sharing).toBeChecked();
+  await expect(page.getByLabel(/^Matching notes/)).toHaveValue("English; senior Python backend roles.");
+  await sharing.uncheck();
+  await page.getByLabel(/^Matching notes/).fill("Unsaved notes");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(sharing).toBeChecked();
+  await expect(page.getByLabel(/^Matching notes/)).toHaveValue("English; senior Python backend roles.");
+
+  await page.getByText("Add a document type", { exact: true }).click();
+  await page.getByLabel("New document type", { exact: true }).fill("Reference letter");
+  await page.getByRole("button", { name: "Add type", exact: true }).click();
+  await expect(documentType.locator("option:checked")).toHaveText("Reference letter");
+  await expect(sharing).toHaveCount(0);
+  await page.getByLabel("New document type", { exact: true }).fill(" resume ");
+  await page.getByRole("button", { name: "Add type", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("already exists");
+  await page.getByLabel("New document type", { exact: true }).fill("");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Document saved");
+  const retyped = await (await page.request.get(endpoint)).json();
+  expect(retyped.document_type_name).toBe("Reference letter");
+  expect(retyped.available_in_chat).toBe(false);
+  expect(await (await page.request.get(`${endpoint}/file`)).body()).toEqual(pdf);
+
+  await documentType.selectOption("resume");
+  await expect(sharing).not.toBeChecked();
+  await sharing.check();
+  await page.getByLabel(/^Matching notes/).fill("");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Document saved");
+  const updated = await (await page.request.get(endpoint)).json();
+  expect(updated.available_in_chat).toBe(true);
+  expect(updated.matching_notes).toBe("");
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await captureThemes(page, "document-resume-sharing");
+  await page.goto("/admin/documents");
+  const row = page.locator(".content-row").filter({ hasText: "Senior backend resume" });
+  await expect(row.locator(".document-type-label")).toHaveText("Resume");
+  await expect(row.locator(".document-chat-label")).toHaveText("Available in chat");
+  await page.request.delete(endpoint, { headers: { Origin: new URL(page.url()).origin } });
 });
 
 test("content navigation and forms fit mobile screens", async ({ page }) => {
