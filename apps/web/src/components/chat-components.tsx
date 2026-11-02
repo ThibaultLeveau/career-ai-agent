@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ChatAnswer } from "@/components/chat-answer";
-import { isChatComponent, type CareerListData, type ChatComponent, type DetailAction, type JobCardData, type JobRow, type ProjectCardData, type ProjectRow } from "@/lib/chat-components";
+import { isChatComponent, type CareerListData, type ChatComponent, type DetailAction, type JobCardData, type JobRow, type ProjectCardData, type ProjectRow, type ResumeDownloadData } from "@/lib/chat-components";
 
 type OpenRecord = (question: string, action: DetailAction) => void;
 type ViewProps = { data: ChatComponent; busy: boolean; onOpen: OpenRecord; onUpdate: (data: CareerListData) => void };
@@ -151,7 +151,83 @@ export function JobCard({ data }: { data: JobCardData }) {
   </section>;
 }
 
+function downloadFilename(response: Response, fallback: string) {
+  const encoded = /(?:^|;)\s*filename\*=UTF-8''([^;]+)/i.exec(response.headers.get("content-disposition") ?? "")?.[1];
+  if (!encoded) return fallback;
+  try {
+    const filename = decodeURIComponent(encoded.trim());
+    if (filename.trim() && filename.length <= 255 && !/[\\/]/.test(filename)
+      && ![...filename].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return filename;
+  } catch { /* Keep the verified card filename when a header is malformed. */ }
+  return fallback;
+}
+
+function ResumeDownload({ data }: { data: ResumeDownloadData }) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
+  const active = useRef<AbortController | null>(null);
+  const errorId = useId();
+  useEffect(() => () => { active.current?.abort(); active.current = null; }, []);
+
+  async function download() {
+    if (active.current) return;
+    const controller = new AbortController();
+    active.current = controller;
+    setDownloading(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/resumes/download?token=${encodeURIComponent(data.token)}`, {
+        cache: "no-store", signal: controller.signal,
+      });
+      if (response.status === 404 || response.status === 410) {
+        setUnavailable(true);
+        throw new Error("This resume is no longer available. Please ask for an updated resume.");
+      }
+      if (!response.ok || response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/pdf")
+        throw new Error("The download could not be started. Please try again.");
+      const file = await response.blob();
+      if (!file.size) throw new Error("The download could not be started. Please try again.");
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = downloadFilename(response, data.filename);
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 1000);
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(failure instanceof Error && failure.name !== "TypeError"
+        ? failure.message : "The download could not be started. Please try again.");
+    } finally {
+      if (active.current === controller) {
+        active.current = null;
+        setDownloading(false);
+      }
+    }
+  }
+
+  const size = data.size >= 1024 * 1024
+    ? `${(data.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(data.size / 1024))} KB`;
+  return <section className="resume-download" aria-label={`${data.title} resume download`}>
+    <div className="resume-download-summary">
+      <span className="resume-document-icon" aria-hidden="true">
+        <svg width="27" height="32" viewBox="0 0 27 32" fill="none"><path d="M16 2H5a2 2 0 0 0-2 2v24a2 2 0 0 0 2 2h17a2 2 0 0 0 2-2V10L16 2Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M16 2v8h8M8 17h11M8 22h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </span>
+      <div className="resume-download-copy"><span className="career-eyebrow">TAKE A CLOSER LOOK</span><h3>{data.title}</h3><p>PDF <span aria-hidden="true">·</span> {size}</p></div>
+    </div>
+    <button type="button" className="resume-download-button" disabled={downloading || unavailable}
+      aria-busy={downloading} aria-describedby={error ? errorId : undefined} onClick={() => void download()}>
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      {downloading ? "Downloading…" : unavailable ? "Resume unavailable" : "Download Resume"}
+    </button>
+    {error && <p id={errorId} className="resume-download-error" role="alert">{error}</p>}
+  </section>;
+}
+
 export function ChatComponentView(props: ViewProps) {
+  if (props.data.type === "resume_download") return <ResumeDownload data={props.data} />;
   if (props.data.type === "project_card") return <ProjectCard data={props.data} />;
   if (props.data.type === "job_card") return <JobCard data={props.data} />;
   return <CareerList {...props} data={props.data} />;

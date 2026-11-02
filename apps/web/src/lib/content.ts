@@ -38,10 +38,19 @@ export type Project = Omit<ProjectInput, "skill_ids"> &
     kind: "professional" | "personal";
     skills: Skill[];
   };
+export type DocumentType = {
+  key: string;
+  name: string;
+  is_builtin: boolean;
+};
 export type ResumeDocument = IngestibleRecord & {
   title: string;
   filename: string;
   size: number;
+  document_type_key: string;
+  document_type_name: string;
+  available_in_chat: boolean;
+  matching_notes: string;
 };
 export function period(record: Timeline) {
   return (

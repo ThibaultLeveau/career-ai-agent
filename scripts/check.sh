@@ -48,6 +48,51 @@ curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:$WEB_PORT
 compose -f compose.yaml -f compose.test.yaml build e2e
 mkdir -p apps/web/test-results
 compose -f compose.yaml -f compose.test.yaml run --rm --no-deps --user "$(id -u):$(id -g)" e2e
+compose exec -T api python - <<'PY'
+from urllib.error import HTTPError
+from urllib.parse import quote, urlencode
+from urllib.request import urlopen
+
+from sqlalchemy.orm import Session
+
+from app.content.models import Document
+from app.content.resume_download import download_token
+from app.db import get_engine
+
+with Session(get_engine()) as db:
+    content = b"%PDF-1.7\nIsolated public download smoke test"
+    record = Document(
+        title="Resume download smoke test",
+        filename="Resume download smoke.pdf",
+        content=content,
+        size=len(content),
+        document_type_key="resume",
+        available_in_chat=True,
+    )
+    db.add(record)
+    db.commit()
+    try:
+        url = "http://web:3000/api/resumes/download?" + urlencode({"token": download_token(record.id)})
+        with urlopen(url, timeout=30) as response:
+            assert response.status == 200
+            assert response.read() == content
+            assert response.headers["Content-Type"] == "application/pdf"
+            assert response.headers["Cache-Control"] == "no-store"
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+            assert response.headers["Content-Disposition"] == "attachment; filename*=UTF-8''" + quote(record.filename, safe="")
+        record.available_in_chat = False
+        db.commit()
+        try:
+            urlopen(url, timeout=30)
+        except HTTPError as error:
+            assert error.code == 404
+        else:
+            raise AssertionError("Disabled resumes must not remain downloadable")
+    finally:
+        db.delete(record)
+        db.commit()
+print("Anonymous resume proxy download and immediate revocation passed.")
+PY
 compose run --rm --no-deps migrate alembic check
 compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
     "UPDATE rag_configuration SET configuration = jsonb_set(configuration::jsonb, '{ingestion,chunk_size}', '950');"
@@ -58,6 +103,12 @@ test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
 compose run --rm --no-deps migrate alembic upgrade head
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT configuration->'ingestion'->>'chunk_size' FROM rag_configuration")" = "950"
+compose run --rm --no-deps migrate alembic downgrade 0006
+compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+    "INSERT INTO document (title, filename, size, content) VALUES ('migration-resume', 'resume.pdf', 8, decode('255044462d312e37', 'hex'));"
+compose run --rm --no-deps migrate alembic upgrade head
+test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
+    "SELECT document_type_key || ':' || available_in_chat::text || ':' || encode(content, 'hex') FROM document WHERE title = 'migration-resume'")" = "other:false:255044462d312e37"
 compose run --rm --no-deps migrate alembic downgrade base
 compose run --rm --no-deps migrate alembic upgrade head
 compose run --rm --no-deps migrate alembic upgrade head
@@ -65,7 +116,7 @@ compose run --rm migrate
 
 verify_database() {
     test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_extension WHERE extname = 'vector'")" = "1"
-    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0006"
+    test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version")" = "0007"
 }
 
 verify_database
@@ -96,6 +147,8 @@ test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT count(*) FROM project p JOIN job j ON p.job_id = j.id JOIN project_skill ps ON ps.project_id = p.id JOIN skill s ON s.id = ps.skill_id WHERE p.name = 'persisted-project' AND j.title = 'persisted-job' AND s.keyword = 'persisted-skill'")" = "1"
 test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT encode(content, 'hex') FROM document WHERE title = 'persisted-resume'")" = "255044462d312e37"
+test "$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
+    "SELECT document_type_key || ':' || available_in_chat::text FROM document WHERE title = 'persisted-resume'")" = "other:false"
 compose stop db
 test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
     "http://127.0.0.1:$API_PORT/health")" = "503"

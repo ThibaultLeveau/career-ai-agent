@@ -117,11 +117,32 @@ class ProjectOutput(IngestibleOutput):
     skills: list[SkillOutput]
 
 
+class DocumentTypeInput(Input):
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+
+
+class DocumentTypeOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    name: str
+    is_builtin: bool
+
+
 class DocumentInput(Input):
     title: Name
+    document_type_key: str = Field(default="other", min_length=1, max_length=100)
+    available_in_chat: bool = False
+    matching_notes: str = Field(default="", max_length=2000)
 
 
 class DocumentOutput(IngestibleOutput):
     title: str
     filename: str
     size: int
+    document_type_key: str
+    document_type_name: str
+    available_in_chat: bool
+    matching_notes: str

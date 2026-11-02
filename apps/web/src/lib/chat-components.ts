@@ -1,5 +1,5 @@
 export type DetailAction = { type: "show_project" | "show_job"; token: string };
-export type ComponentReference = { type: "project" | "job"; id: number; label: string };
+export type ComponentReference = { type: "project" | "job" | "document"; id: number; label: string };
 type Timeline = {
   id: number;
   start_month: string | null;
@@ -38,7 +38,15 @@ export type JobCardData = {
   type: "job_card";
   record: JobRow & { responsibilities: string; achievements: string };
 };
-export type ChatComponent = CareerListData | ProjectCardData | JobCardData;
+export type ResumeDownloadData = {
+  type: "resume_download";
+  id: number;
+  title: string;
+  filename: string;
+  size: number;
+  token: string;
+};
+export type ChatComponent = CareerListData | ProjectCardData | JobCardData | ResumeDownloadData;
 export type ComponentEvent = { introduction: string; component: ChatComponent };
 export type ChatBlock = { type: "text"; text: string } | ({ type: "component" } & ComponentEvent);
 
@@ -74,6 +82,10 @@ function job(value: unknown): value is JobRow {
 
 export function isChatComponent(value: unknown): value is ChatComponent {
   if (!object(value)) return false;
+  if (value.type === "resume_download") return integer(value.id, 1)
+    && text(value.title, 200, 1) && value.title.trim().length > 0
+    && text(value.filename, 255, 1) && value.filename.trim().length > 0
+    && integer(value.size, 1, 10485760) && text(value.token, 2048, 1);
   if (value.type === "project_card") return object(value.record)
     && text(value.record.description, 8000) && text(value.record.outcomes, 8000)
     && (value.record.contribution === undefined || text(value.record.contribution, 8000))
@@ -99,6 +111,7 @@ export function isComponentEvent(value: unknown): value is ComponentEvent {
 }
 
 export function componentReferences(component: ChatComponent): ComponentReference[] {
+  if (component.type === "resume_download") return [{ type: "document", id: component.id, label: component.title }];
   const rows = "items" in component ? component.items : [component.record];
   return rows.map((row) => "name" in row
     ? { type: "project", id: row.id, label: row.name }

@@ -27,6 +27,7 @@ from app.chat import (
     query_catalog,
     query_engine,
     resource_reader,
+    resumes,
     retrieval,
 )
 from app.chat.activity import Activity
@@ -1026,6 +1027,7 @@ class Run:
 
     async def produce(self):
         deadline = asyncio.get_running_loop().time() + SEARCH_SECONDS + ANSWER_SECONDS
+        resume_task = None
         try:
             await self.status(
                 "database" if self.request.action else "analyzing",
@@ -1058,6 +1060,22 @@ class Run:
                     )
             if self.assessment.intent == "redirect":
                 await self.queue.put(("delta", {"text": self.assessment.reply}))
+                await self.queue.put(("done", {"sources": []}))
+                return
+            if self.assessment.resume.eligible and not self.request.action:
+                generation = agent_generation(self.prepared.config, "query_analyzer")
+                resume_task = asyncio.create_task(
+                    resumes.choose(
+                        self.assessment,
+                        self.request,
+                        generation,
+                        self.prepared.agent_keys.get(generation.provider, ""),
+                    )
+                )
+            if self.assessment.resume.only:
+                outcome = await resume_task if resume_task else resumes.Outcome()
+                async for name, payload in resumes.events(outcome, self.assessment):
+                    await self.queue.put((name, payload))
                 await self.queue.put(("done", {"sources": []}))
                 return
             self.request = self.request.model_copy(
@@ -1153,12 +1171,28 @@ class Run:
                     + REPRESENTATIVE_RULES
                     + "\nPresentation selection is finished. Write only the answer "
                     "prose or aggregate analysis now; do not request more tools. "
-                    "Do not duplicate any following components or introductions.",
+                    "Do not duplicate any following components or introductions. "
+                    "If assessment.resume.missing_details_question is nonempty, "
+                    "the interface appends it: do not ask another question for "
+                    "those missing job details.",
                     reasoning_effort="low",
                 ):
                     await self.queue.put(("delta", {"text": value}))
                 for view in views:
                     await self.queue.put(("component", view.model_dump()))
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining > 0:
+                try:
+                    async with asyncio.timeout(remaining):
+                        outcome = (
+                            await resume_task if resume_task else resumes.Outcome()
+                        )
+                        async for name, payload in resumes.events(
+                            outcome, self.assessment
+                        ):
+                            await self.queue.put((name, payload))
+                except TimeoutError:
+                    pass
             await self.queue.put(
                 (
                     "done",
@@ -1177,6 +1211,10 @@ class Run:
             logger.error("Career agent run failed")
             await self.queue.put(("error", {"message": providers.UNAVAILABLE}))
         finally:
+            if resume_task is not None:
+                resume_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await resume_task
             await self.queue.put(None)
 
 

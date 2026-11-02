@@ -1,17 +1,30 @@
+import re
 from typing import Annotated
 from urllib.parse import quote
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.admin.security import Database, check_origin, require_admin
-from app.content.models import Document, Job, Project, Skill
+from app.content.models import Document, DocumentType, Job, Project, Skill
 from app.content.schemas import (
     DocumentInput,
     DocumentOutput,
+    DocumentTypeInput,
+    DocumentTypeOutput,
     JobInput,
     JobOutput,
     ProjectInput,
@@ -52,10 +65,11 @@ def get_record[T: Base](model: type[T], record_id: int, db: Session) -> T:
     return record
 
 
-def save[T: Base](record: T, db: Session) -> T:
+def save[T: Base](record: T, db: Session, *, ingest: bool = True) -> T:
     db.add(record)
     try:
-        changed(db, record)
+        if ingest:
+            changed(db, record)
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -196,6 +210,29 @@ def delete_skill(record_id: int, db: Database):
     db.commit()
 
 
+@router.get("/document-types", response_model=list[DocumentTypeOutput])
+def document_types(db: Database):
+    return db.scalars(
+        select(DocumentType).order_by(
+            DocumentType.is_builtin.desc(), func.lower(DocumentType.name)
+        )
+    ).all()
+
+
+@router.post("/document-types", response_model=DocumentTypeOutput, status_code=201)
+def create_document_type(data: DocumentTypeInput, db: Database):
+    slug = re.sub(r"[^a-z0-9]+", "-", data.name.lower()).strip("-")[:60] or "type"
+    record = DocumentType(key=f"{slug}-{uuid4().hex[:12]}", name=data.name)
+    db.add(record)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "This document type already exists") from error
+    db.refresh(record)
+    return record
+
+
 @router.get("/documents", response_model=list[DocumentOutput])
 def documents(db: Database):
     return db.scalars(
@@ -203,13 +240,31 @@ def documents(db: Database):
     ).all()
 
 
-def document_values(title: str, file: UploadFile | None):
+def document_values(
+    title: str,
+    file: UploadFile | None,
+    db: Session,
+    *,
+    document_type_key: str,
+    available_in_chat: bool,
+    matching_notes: str,
+):
     try:
-        values = DocumentInput(title=title).model_dump()
+        values = DocumentInput(
+            title=title,
+            document_type_key=document_type_key,
+            available_in_chat=available_in_chat,
+            matching_notes=matching_notes,
+        ).model_dump()
     except ValidationError as error:
         raise HTTPException(
-            422, "Title must contain between 1 and 200 characters"
+            422,
+            [{"loc": item["loc"], "msg": item["msg"]} for item in error.errors()],
         ) from error
+    if db.get(DocumentType, values["document_type_key"]) is None:
+        raise HTTPException(422, "Selected document type no longer exists")
+    if values["available_in_chat"] and values["document_type_key"] != "resume":
+        raise HTTPException(422, "Only resumes can be made available in chat")
     if file is not None:
         filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
         filename = "".join(c for c in filename if c.isprintable())[:255]
@@ -229,9 +284,26 @@ def document_values(title: str, file: UploadFile | None):
 
 @router.post("/documents", response_model=DocumentOutput, status_code=201)
 def create_document(
-    db: Database, title: Annotated[str, Form()], file: Annotated[UploadFile, File()]
+    db: Database,
+    title: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    document_type_key: Annotated[str, Form()] = "other",
+    available_in_chat: Annotated[bool, Form()] = False,
+    matching_notes: Annotated[str, Form()] = "",
 ):
-    return save(Document(**document_values(title, file)), db)
+    return save(
+        Document(
+            **document_values(
+                title,
+                file,
+                db,
+                document_type_key=document_type_key,
+                available_in_chat=available_in_chat,
+                matching_notes=matching_notes,
+            )
+        ),
+        db,
+    )
 
 
 @router.get("/documents/{record_id}", response_model=DocumentOutput)
@@ -239,17 +311,50 @@ def document(record_id: int, db: Database):
     return get_record(Document, record_id, db)
 
 
+async def document_form_fields(request: Request) -> set[str]:
+    return set(await request.form())
+
+
 @router.put("/documents/{record_id}", response_model=DocumentOutput)
 def update_document(
     record_id: int,
     db: Database,
     title: Annotated[str, Form()],
+    submitted: Annotated[set[str], Depends(document_form_fields)],
     file: Annotated[UploadFile | None, File()] = None,
+    document_type_key: Annotated[str | None, Form()] = None,
+    available_in_chat: Annotated[bool | None, Form()] = None,
+    matching_notes: Annotated[str | None, Form()] = None,
 ):
     record = get_record(Document, record_id, db)
-    for key, value in document_values(title, file).items():
+    type_key = (
+        (document_type_key or "")
+        if "document_type_key" in submitted
+        else record.document_type_key
+    )
+    type_changed = type_key != record.document_type_key
+    availability_supplied = "available_in_chat" in submitted
+    available = (
+        bool(available_in_chat) if availability_supplied else record.available_in_chat
+    )
+    if type_changed and (type_key != "resume" or not availability_supplied):
+        available = False
+    values = document_values(
+        title,
+        file,
+        db,
+        document_type_key=type_key,
+        available_in_chat=available,
+        matching_notes=(
+            (matching_notes or "")
+            if "matching_notes" in submitted
+            else record.matching_notes
+        ),
+    )
+    ingest = file is not None or values["title"] != record.title
+    for key, value in values.items():
         setattr(record, key, value)
-    return save(record, db)
+    return save(record, db, ingest=ingest)
 
 
 @router.get("/documents/{record_id}/file")

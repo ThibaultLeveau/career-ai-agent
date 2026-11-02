@@ -5,30 +5,76 @@ import { IngestionStatus } from "../ingestion-status";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { adminRequest } from "@/lib/admin";
-import { fileSize, type ResumeDocument } from "@/lib/content";
+import { fileSize, type DocumentType, type ResumeDocument } from "@/lib/content";
 import { Notice, useUnsavedChanges } from "../ui";
 import { DeleteButton, Field, SaveBar } from "./shared";
 
-export function DocumentForm({ document }: { document?: ResumeDocument }) {
+function fields(document?: ResumeDocument) {
+  return {
+    title: document?.title ?? "",
+    document_type_key: document?.document_type_key ?? "other",
+    available_in_chat: document?.available_in_chat ?? false,
+    matching_notes: document?.matching_notes ?? "",
+  };
+}
+
+export function DocumentForm({
+  document,
+  documentTypes,
+}: {
+  document?: ResumeDocument;
+  documentTypes: DocumentType[];
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
-  const [title, setTitle] = useState(document?.title ?? "");
-  const [savedTitle, setSavedTitle] = useState(title);
+  const [values, setValues] = useState(fields(document));
+  const [saved, setSaved] = useState(values);
+  const [types, setTypes] = useState(documentTypes);
+  const [typeName, setTypeName] = useState("");
+  const [creatingType, setCreatingType] = useState(false);
+  const [typeError, setTypeError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const dirty = title !== savedTitle || file !== null;
+  const dirty = JSON.stringify(values) !== JSON.stringify(saved) || file !== null;
   useUnsavedChanges(dirty);
   function reset() {
-    setTitle(savedTitle);
+    setValues(saved);
     setFile(null);
+    setTypeName("");
+    setTypeError("");
     setError("");
     setMessage("");
     if (input.current) input.current.value = "";
   }
+  function selectType(key: string) {
+    setValues((current) => ({
+      ...current,
+      document_type_key: key,
+      available_in_chat: key === current.document_type_key && current.available_in_chat,
+    }));
+  }
+  async function createType() {
+    if (!typeName.trim() || creatingType) return;
+    setCreatingType(true);
+    setTypeError("");
+    try {
+      const result = await adminRequest<DocumentType>("document-types", "POST", {
+        name: typeName.trim(),
+      });
+      setTypes((current) => [...current, result]);
+      selectType(result.key);
+      setTypeName("");
+    } catch (error) {
+      setTypeError((error as Error).message);
+    } finally {
+      setCreatingType(false);
+    }
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy || creatingType) return;
     setError("");
     setMessage("");
     if (
@@ -43,14 +89,18 @@ export function DocumentForm({ document }: { document?: ResumeDocument }) {
     setBusy(true);
     try {
       const body = new FormData();
-      body.set("title", title);
+      body.set("title", values.title);
+      body.set("document_type_key", values.document_type_key);
+      body.set("available_in_chat", String(values.available_in_chat));
+      body.set("matching_notes", values.matching_notes);
       if (file) body.set("file", file);
       const result = await adminRequest<ResumeDocument>(
         document ? `documents/${document.id}` : "documents",
         document ? "PUT" : "POST",
         body,
       );
-      setSavedTitle(title);
+      setValues(fields(result));
+      setSaved(fields(result));
       setFile(null);
       setMessage("Document saved.");
       if (input.current) input.current.value = "";
@@ -72,13 +122,72 @@ export function DocumentForm({ document }: { document?: ResumeDocument }) {
         />
       )}
       <form onSubmit={submit}>
-        <fieldset disabled={busy} className="settings-section content-form">
+        <fieldset disabled={busy || creatingType} className="settings-section content-form">
           <Field
             label="Title"
             required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={values.title}
+            onChange={(e) => setValues({ ...values, title: e.target.value })}
           />
+          <div className="document-type-field">
+            <label>
+              Document type
+              <select value={values.document_type_key} onChange={(e) => selectType(e.target.value)}>
+                {types.map((type) => <option key={type.key} value={type.key}>{type.name}</option>)}
+              </select>
+            </label>
+            <details className="document-type-create">
+              <summary>Add a document type</summary>
+              <div className="document-type-create-fields">
+                <label>
+                  New document type
+                  <input
+                    value={typeName}
+                    maxLength={100}
+                    placeholder="For example, Certificate"
+                    onChange={(e) => setTypeName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void createType();
+                      }
+                    }}
+                  />
+                </label>
+                <button className="button button-small" type="button" disabled={!typeName.trim()} onClick={createType}>
+                  {creatingType ? "Adding…" : "Add type"}
+                </button>
+              </div>
+              <Notice error>{typeError}</Notice>
+            </details>
+          </div>
+          {values.document_type_key === "resume" && (
+            <section className="document-sharing" aria-label="Resume sharing">
+              <label className="switch-label">
+                <input
+                  className="switch"
+                  type="checkbox"
+                  role="switch"
+                  checked={values.available_in_chat}
+                  onChange={(e) => setValues({ ...values, available_in_chat: e.target.checked })}
+                  aria-describedby="resume-sharing-help"
+                />
+                Available in chat
+              </label>
+              <p id="resume-sharing-help">Allow visitors to download this resume when it fits their job opportunity. Turning this off also disables existing download links.</p>
+              <label>
+                Matching notes
+                <textarea
+                  rows={3}
+                  maxLength={2000}
+                  value={values.matching_notes}
+                  placeholder="For example, English resume for senior backend or Python engineering roles."
+                  onChange={(e) => setValues({ ...values, matching_notes: e.target.value })}
+                />
+                <small>Help the assistant choose this resume: roles, seniority, language or location. These notes are not shown to visitors.</small>
+              </label>
+            </section>
+          )}
           {document && (
             <div className="document-current">
               <strong>{document.filename}</strong>
@@ -96,7 +205,7 @@ export function DocumentForm({ document }: { document?: ResumeDocument }) {
             </div>
           )}
           <label>
-            {document ? "Replace PDF" : "Resume PDF"}
+            {document ? "Replace PDF" : "Document PDF"}
             <input
               ref={input}
               type="file"
@@ -112,7 +221,7 @@ export function DocumentForm({ document }: { document?: ResumeDocument }) {
         </fieldset>
         <Notice error>{error}</Notice>
         <Notice>{message}</Notice>
-        <SaveBar busy={busy} dirty={dirty} isNew={!document} reset={reset} />
+        <SaveBar busy={busy || creatingType} dirty={dirty} isNew={!document} reset={reset} />
       </form>
       {document && (
         <div className="record-footer">

@@ -18,6 +18,7 @@ export type ChatTurn = {
   sources: ChatSource[];
   error?: string;
   activity?: ChatActivity;
+  resumeClarificationAsked?: boolean;
 };
 
 export type AgentActivity = {
@@ -75,6 +76,16 @@ export function completedHistory(turns: ChatTurn[]): ChatMessage[] {
   return pairs.flat();
 }
 
+export function completedResumeState(turns: ChatTurn[]) {
+  const completed = turns.filter((turn) => turn.status === "complete");
+  const offered = [...new Set(completed.flatMap((turn) => turn.blocks.flatMap((block) =>
+    block.type === "component" && block.component.type === "resume_download" ? [block.component.id] : [])))];
+  return {
+    ...(offered.length ? { offered_resume_ids: offered } : {}),
+    ...(completed.some((turn) => turn.resumeClarificationAsked) ? { resume_clarification_asked: true } : {}),
+  };
+}
+
 const interrupted = "The connection was interrupted. Please try again.";
 
 function boundedText(value: unknown, maximum: number): value is string {
@@ -116,6 +127,7 @@ export async function readChatStream(
   onDelta: (text: string) => void,
   onStatus?: (activity: ChatActivity) => void,
   onComponent?: (component: ComponentEvent) => void,
+  onResumeState?: (state: { clarification_asked: true }) => void,
 ): Promise<ChatSource[]> {
   if (
     !response.body ||
@@ -149,6 +161,8 @@ export async function readChatStream(
           onDelta(item.text);
         } else if (event === "component" && isComponentEvent(item)) {
           onComponent?.(item);
+        } else if (event === "resume_state" && item.clarification_asked === true) {
+          onResumeState?.({ clarification_asked: true });
         } else if (event === "status" && isChatActivity(item)) {
           onStatus?.({
             stage: item.stage,

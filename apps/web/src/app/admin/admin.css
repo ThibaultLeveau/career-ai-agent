@@ -1120,6 +1120,17 @@
   margin: 6px 0 14px;
   font-size: 11px;
 }
+.document-type-create { margin-top: 12px; }
+.document-type-create summary { color: var(--accent); font-size: 12px; cursor: pointer; }
+.document-type-create-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 14px; }
+.document-type-create-fields label { flex: 1 1 220px; min-width: 0; }
+.document-type-create-fields .button { margin-bottom: 1px; }
+.document-sharing { display: grid; gap: 16px; border: 1px solid var(--border); border-radius: 10px; padding: 20px; background: var(--surface-subtle); }
+.document-sharing .switch-label { margin-left: 0; font-size: 13px !important; }
+.document-sharing p { color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.record-link > .document-labels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; }
+.document-type-label, .document-chat-label { border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; font-size: 10px; }
+.document-chat-label { color: var(--accent); background: var(--accent-soft); }
 @media (max-width: 767px) {
   .content-row {
     flex-wrap: wrap;

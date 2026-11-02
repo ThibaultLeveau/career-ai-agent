@@ -163,7 +163,9 @@ export function ProjectsList({
 export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
   const [query, setQuery] = useState("");
   const filtered = documents.filter((doc) =>
-    `${doc.title} ${doc.filename}`.toLowerCase().includes(query.toLowerCase()),
+    `${doc.title} ${doc.filename} ${doc.document_type_name}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
   );
   return (
     <>
@@ -185,6 +187,10 @@ export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
             <Link className="record-link" href={`/admin/documents/${doc.id}`}>
               <strong>{doc.title}</strong>
               <span>{doc.filename}</span>
+              <span className="document-labels">
+                <span className="document-type-label">{doc.document_type_name}</span>
+                {doc.available_in_chat && <span className="document-chat-label">Available in chat</span>}
+              </span>
             </Link>
             <span className="record-meta">
               {fileSize(doc.size)}
@@ -196,7 +202,7 @@ export function DocumentsList({ documents }: { documents: ResumeDocument[] }) {
           <Empty>
             {documents.length
               ? "No matching documents."
-              : "No documents yet. Upload your first resume PDF."}
+              : "No documents yet. Upload your first PDF."}
           </Empty>
         )}
       </div>

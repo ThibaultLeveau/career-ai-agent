@@ -1,10 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { captureThemes, expectTheme, setTheme } from "./theme";
 
 type ChatRequest = {
   message: string;
   history: { role: "user" | "assistant"; content: string; components?: { type: string; id: number; label: string }[] }[];
   action?: { type: string; token: string };
+  offered_resume_ids?: number[];
+  resume_clarification_asked?: boolean;
 };
 type Reply = {
   parts?: string[];
@@ -735,4 +738,156 @@ test("malformed components fail safely and detail retries retain their record ac
   const sent = await requests(page);
   expect(sent[2].action).toEqual(sent[1].action);
   expect(sent[2].history).toEqual(sent[1].history);
+});
+
+const resumeCard = {
+  type: "resume_download", id: 72, title: "Thibault Leveau · Software Engineer",
+  filename: "Thibault-Leveau-Resume.pdf", size: 248832, token: "signed+/= &resume-token",
+};
+
+test("streams a resume call to action after career cards and downloads its PDF without leaving chat", async ({ page }) => {
+  const job = { type: "job_card", record: { ...jobRecord(1), responsibilities: "Lead the engineering team.", achievements: "" } };
+  const response = componentReply([job, resumeCard]);
+  response.fragmentBytes = 31;
+  response.delay = 1;
+  await mockChat(page, [response]);
+  const pdf = Buffer.from("%PDF-1.7\nResume download fixture\n%%EOF\n");
+  const currentFilename = "Thibault Leveau Resume Updated.pdf";
+  await page.route("**/api/resumes/download?*", async (route) => {
+    expect(new URL(route.request().url()).searchParams.get("token")).toBe(resumeCard.token);
+    await route.fulfill({ contentType: "application/pdf", body: pdf,
+      headers: { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(currentFilename)}` } });
+  });
+  await page.goto("/");
+  await page.getByLabel("Ask about my career").fill("We need a software engineer to lead our Python team.");
+  await page.getByLabel("Ask about my career").press("Enter");
+  const card = page.getByRole("region", { name: `${resumeCard.title} resume download` });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("heading")).toHaveText(resumeCard.title);
+  await expect(card).toContainText("PDF · 243 KB");
+  await expect(page.locator(".answer-component").last()).toContainText(resumeCard.title);
+  const button = card.getByRole("button", { name: "Download Resume", exact: true });
+  await button.focus();
+  await expect(button).toBeFocused();
+  const downloadEvent = page.waitForEvent("download");
+  await page.keyboard.press("Enter");
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe(currentFilename);
+  expect(await readFile((await download.path())!)).toEqual(pdf);
+  await expect(button).toBeEnabled();
+  await expect(page.locator(".chat-turn")).toHaveCount(1);
+  expect(new URL(page.url()).pathname).toBe("/");
+  await captureThemes(page, "chat-resume-download-desktop");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const bounds = await card.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        button: element.querySelector("button")!.getBoundingClientRect().width };
+    });
+    expect(Math.abs(bounds.width - bounds.button)).toBeLessThan(1);
+    expect(await button.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const theme of ["light", "dark"] as const) {
+      await setTheme(page, theme);
+      await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
+      const cardBounds = (await card.boundingBox())!;
+      const composerBounds = (await page.locator(".chat-composer").boundingBox())!;
+      expect(cardBounds.y).toBeGreaterThanOrEqual(0);
+      expect(cardBounds.y + cardBounds.height).toBeLessThanOrEqual(composerBounds.y);
+      await page.screenshot({ path: `test-results/chat-resume-download-mobile-${width}-${theme}.png`, animations: "disabled" });
+    }
+    const mobileDownloadEvent = page.waitForEvent("download");
+    await button.click();
+    expect((await mobileDownloadEvent).suggestedFilename()).toBe(currentFilename);
+  }
+});
+
+test("resume download errors retry inline and unavailable documents preserve the conversation", async ({ page }) => {
+  await mockChat(page, [componentReply([resumeCard])]);
+  let downloads = 0;
+  await page.route("**/api/resumes/download?*", async (route) => {
+    downloads++;
+    if (downloads === 1) await route.fulfill({ status: 503, json: { detail: "Unavailable" } });
+    else if (downloads === 2) await route.fulfill({ contentType: "text/html", body: "Wrong content" });
+    else await route.fulfill({ status: 404, json: { detail: "Unavailable" } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "The career overview" }).click();
+  const card = page.getByRole("region", { name: `${resumeCard.title} resume download` });
+  const button = card.getByRole("button", { name: "Download Resume", exact: true });
+  await button.click();
+  await expect(card.getByRole("alert")).toContainText("Please try again");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect.poll(() => downloads).toBe(2);
+  await expect(card.getByRole("alert")).toContainText("Please try again");
+  await button.click();
+  await expect(card.getByRole("alert")).toContainText("no longer available");
+  await expect(card.getByRole("button", { name: "Resume unavailable" })).toBeDisabled();
+  await expect(page.locator(".answer-content").first()).toContainText("recorded experience");
+  expect((await requests(page))).toHaveLength(1);
+  expect(new URL(page.url()).pathname).toBe("/");
+});
+
+test("resume offers and clarification state survive history truncation and reset with a new conversation", async ({ page }) => {
+  const first = componentReply([resumeCard]);
+  first.parts!.splice(0, 0, streamEvent("resume_state", { clarification_asked: true }));
+  await mockChat(page, [first, reply("More about my career.")]);
+  await page.goto("/");
+  for (let index = 0; index < 7; index++) {
+    await page.getByLabel("Ask about my career").fill(`Question ${index}`);
+    await page.getByLabel("Ask about my career").press("Enter");
+    await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  }
+  const sent = await requests(page);
+  expect(sent[0].offered_resume_ids).toBeUndefined();
+  expect(sent[1].history[1].components).toEqual([{ type: "document", id: resumeCard.id, label: resumeCard.title }]);
+  expect(sent[6].history).toHaveLength(8);
+  expect(sent[6].history[0].content).toBe("Question 2");
+  expect(sent[6].history.every((message) => !message.components?.length)).toBe(true);
+  for (const request of sent.slice(1)) {
+    expect(request.offered_resume_ids).toEqual([resumeCard.id]);
+    expect(request.resume_clarification_asked).toBe(true);
+  }
+  await page.getByRole("button", { name: "New conversation", exact: true }).click();
+  await page.getByRole("button", { name: "The career overview" }).click();
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  expect((await requests(page))[7]).toEqual({ message: "Give me an overview of your career.", history: [] });
+});
+
+test("explicit repeat offers remain downloadable and repeated references are deduplicated", async ({ page }) => {
+  const componentOnly = componentReply([resumeCard]);
+  componentOnly.parts!.shift();
+  await mockChat(page, [componentOnly, componentReply([resumeCard]), reply("You are welcome.")]);
+  await page.goto("/");
+  for (const question of ["Please send your resume.", "Can I have your resume again?", "Thank you."]) {
+    await page.getByLabel("Ask about my career").fill(question);
+    await page.getByLabel("Ask about my career").press("Enter");
+    await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  }
+  await expect(page.getByRole("button", { name: "Download Resume", exact: true })).toHaveCount(2);
+  expect((await requests(page))[2].offered_resume_ids).toEqual([resumeCard.id]);
+});
+
+test("interrupted resume state stays out of subsequent requests", async ({ page }) => {
+  await mockChat(page, [{ parts: [
+    streamEvent("resume_state", { clarification_asked: true }),
+    streamEvent("component", { introduction: "Here is my resume.", component: resumeCard }),
+  ] }, reply("Here is a complete answer.")]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "The career overview" }).click();
+  await expect(page.locator(".chat-turn").getByRole("alert")).toContainText("interrupted");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.locator(".answer-content")).toHaveText("Here is a complete answer.");
+  expect((await requests(page))[1]).toEqual({ message: "Give me an overview of your career.", history: [] });
+});
+
+test("malformed resume metadata never renders a download button", async ({ page }) => {
+  await mockChat(page, [componentReply([{ ...resumeCard, size: -1, token: null }])]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "The career overview" }).click();
+  await expect(page.locator(".chat-turn").getByRole("alert")).toContainText("interrupted");
+  await expect(page.getByRole("button", { name: "Download Resume", exact: true })).toHaveCount(0);
 });

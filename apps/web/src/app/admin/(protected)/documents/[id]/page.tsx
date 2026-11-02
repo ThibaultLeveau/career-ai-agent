@@ -2,7 +2,7 @@ import { DocumentForm } from "@/components/admin/content/document-form";
 import { PageTitle } from "@/components/admin/ui";
 import Link from "next/link";
 import { adminData } from "@/lib/admin-server";
-import type { ResumeDocument } from "@/lib/content";
+import type { DocumentType, ResumeDocument } from "@/lib/content";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -12,7 +12,10 @@ export default async function Page({
 }) {
   const { id } = await params;
   if (!/^[1-9]\d*$/.test(id)) notFound();
-  const record = await adminData<ResumeDocument>(`documents/${id}`);
+  const [record, documentTypes] = await Promise.all([
+    adminData<ResumeDocument>(`documents/${id}`),
+    adminData<DocumentType[]>("document-types"),
+  ]);
   return (
     <div className="admin-content">
       <Link className="back-link" href="/admin/documents">
@@ -21,7 +24,7 @@ export default async function Page({
       <PageTitle eyebrow="DOCUMENTS" title="Edit document">
         Update your document details.
       </PageTitle>
-      <DocumentForm document={record} />
+      <DocumentForm document={record} documentTypes={documentTypes} />
     </div>
   );
 }
