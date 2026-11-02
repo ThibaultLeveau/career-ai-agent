@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PublicHeader } from "@/components/public-header";
 import { ChatAnswer } from "@/components/chat-answer";
 import { ChatActivityView } from "@/components/chat-activity";
@@ -105,7 +105,8 @@ export function CareerChat() {
     };
   }, []);
 
-  useEffect(() => {
+  // Follow before reflow-generated scroll events can be mistaken for reader scrolling.
+  useLayoutEffect(() => {
     if (!turns.length || !follow.current) return;
     if (desktop && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
     else bottom.current?.scrollIntoView({ block: "end" });
