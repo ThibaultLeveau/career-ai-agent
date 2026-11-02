@@ -31,6 +31,7 @@ from app.chat import (
     retrieval,
 )
 from app.chat.activity import Activity
+from app.chat.agent_prompts import VISITOR_WRITING_RULES
 from app.chat.query_schema import DatabaseRequest
 from app.chat.schemas import ChatRequest, Citation
 from app.chat.service import Prepared, event
@@ -200,6 +201,7 @@ counts is useful; do not replace a requested complete ranking with a few example
 Read results can contain complete skill/relationship fields and paged text. Respect
 complete, has_more, next_offset and any context/extraction limitations.
 """
+    + VISITOR_WRITING_RULES
 )
 
 
@@ -1145,7 +1147,7 @@ class Run:
                                     ),
                                     "instructions": (
                                         "These verified components and introductions "
-                                        "will follow your prose. Give a short direct "
+                                        "accompany your answer. Give a short direct "
                                         "answer and relevant interpretation. Do not "
                                         "duplicate introductions, lists or tables. "
                                         "Each list contains exactly its selected "
@@ -1171,7 +1173,7 @@ class Run:
                     + REPRESENTATIVE_RULES
                     + "\nPresentation selection is finished. Write only the answer "
                     "prose or aggregate analysis now; do not request more tools. "
-                    "Do not duplicate any following components or introductions. "
+                    "Do not duplicate displayed components or introductions. "
                     "If assessment.resume.missing_details_question is nonempty, "
                     "the interface appends it: do not ask another question for "
                     "those missing job details.",

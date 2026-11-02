@@ -15,6 +15,7 @@ from app.admin.models import ProviderKey
 from app.admin.schemas import RagSettings, agent_generation
 from app.admin.security import cipher
 from app.chat import assessment, providers, resumes, retrieval
+from app.chat.agent_prompts import VISITOR_WRITING_RULES
 from app.chat.schemas import ChatRequest
 from app.chat.text import bounded_history, retrieval_query
 from app.db import get_engine
@@ -214,6 +215,7 @@ async def answer(prepared: Prepared, data: ChatRequest) -> AsyncIterator[str]:
                 + INSTRUCTIONS
                 + assessment.CAREER_BOUNDARY
                 + assessment.FIT_BEHAVIOR
+                + VISITOR_WRITING_RULES
             )
             async for value in providers.stream(
                 prepared.config.chat, prepared.key, messages, instructions

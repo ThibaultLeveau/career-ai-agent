@@ -93,7 +93,7 @@
 .experience-detail-content { min-width: 0; }
 .experience-detail-section { margin: 0 0 38px; }
 .experience-detail-section h2, .experience-related > h2 { color: var(--text); font-size: 16px; font-weight: 600; letter-spacing: -.3px; margin: 0 0 16px; }
-.experience-detail-sidebar { position: sticky; top: 30px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 12px; }
+.experience-detail-sidebar { position: sticky; top: calc(var(--public-header-height) + 24px); padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 12px; }
 .experience-detail-sidebar h2 { font-size: 11px; letter-spacing: .3px; margin: 0 0 18px; font-weight: 600; color: var(--text); }
 .experience-metadata { margin: 0; }
 .experience-metadata dl { margin: 0; }

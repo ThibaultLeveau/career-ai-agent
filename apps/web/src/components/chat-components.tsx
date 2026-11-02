@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChatAnswer } from "@/components/chat-answer";
 import { isChatComponent, type CareerListData, type ChatComponent, type DetailAction, type JobCardData, type JobRow, type ProjectCardData, type ProjectRow, type ResumeDownloadData } from "@/lib/chat-components";
+import "./chat-components.css";
 
 type OpenRecord = (question: string, action: DetailAction) => void;
 type ViewProps = { data: ChatComponent; busy: boolean; onOpen: OpenRecord; onUpdate: (data: CareerListData) => void };
@@ -19,7 +20,13 @@ function Period({ record }: { record: ProjectRow | JobRow }) {
 
 function Skills({ skills }: { skills: string[] }) {
   if (!skills.length) return null;
-  return <ul className="career-skills" aria-label="Associated skills">{skills.map((skill) => <li key={skill}>{skill}</li>)}</ul>;
+  return <div className="career-skills-group">
+    <ul className="career-skills" aria-label="Associated skills">{skills.slice(0, 4).map((skill) => <li key={skill}>{skill}</li>)}</ul>
+    {skills.length > 4 && <details className="career-skills-more">
+      <summary>+{skills.length - 4} skills</summary>
+      <ul className="career-skills" aria-label="Additional skills">{skills.slice(4).map((skill) => <li key={skill}>{skill}</li>)}</ul>
+    </details>}
+  </div>;
 }
 
 function KnowMore({ record, disabled, onOpen }: { record: ProjectRow | JobRow; disabled: boolean; onOpen: OpenRecord }) {
@@ -27,7 +34,7 @@ function KnowMore({ record, disabled, onOpen }: { record: ProjectRow | JobRow; d
   return <button type="button" className="career-more" disabled={disabled}
     aria-label={`Know more about ${label}`}
     onClick={() => onOpen(`Tell me more about ${label}.`, record.action)}>
-    <strong aria-hidden="true">✳</strong> know more ...
+    View details <span aria-hidden="true">↗</span>
   </button>;
 }
 
@@ -80,7 +87,7 @@ function CareerList({ data: initial, busy: chatBusy, onOpen, onUpdate }: ViewPro
   const pages = Math.max(1, Math.ceil(data.matched_total / data.page_size));
   return <section className={`career-list ${projects ? "career-project-list" : "career-job-list"}`} aria-label={`${label} list`} aria-busy={busy}>
     <div className="career-list-toolbar">
-      <div><span className="career-eyebrow">EXPLORE MY WORK</span><h3>{label} <span>{filtered ? data.matched_total : data.total}</span></h3>{data.scope_label && <p className="career-scope-label">{data.scope_label}</p>}</div>
+      <div><h3>{label} <span>{filtered ? data.matched_total : data.total}</span></h3>{data.scope_label && <p className="career-scope-label">{data.scope_label}</p>}</div>
       <label htmlFor={filterId} className="career-filter"><span className="sr-only">Filter {label.toLowerCase()}</span>
         <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" /><path d="m13 13 4 4" stroke="currentColor" /></svg>
         <input id={filterId} type="text" value={filter} maxLength={200} disabled={busy && query?.show_all} placeholder={`Filter ${label.toLowerCase()}…`}
@@ -91,18 +98,20 @@ function CareerList({ data: initial, busy: chatBusy, onOpen, onUpdate }: ViewPro
       <span>Filtered · {data.matched_total} of {catalogTotal} {label.toLowerCase()}</span>
       <button type="button" disabled={busy} onClick={() => { setFilter(""); load("", 1, 0, data.unfiltered_total != null); }}>Show all</button>
     </div>}
-    <div className="career-table-scroll" tabIndex={0} role="region" aria-label={`${label} table`}>
-      <table><colgroup><col className="career-title-column" />{projects && <col className="career-experience-column" />}<col className="career-summary-column" /></colgroup><thead><tr><th scope="col">{projects ? "Project" : "Role / employer"}</th>{projects && <th scope="col">Experience</th>}<th scope="col">Summary</th></tr></thead>
-        {data.items.map((row) => <tbody key={row.id} className={`career-record${"name" in row && row.skills.length ? " career-record-with-skills" : ""}`}>
-          <tr>
-            <td>{"name" in row ? <strong>{row.name}</strong> : <><strong>{row.title}</strong><span className="career-secondary">{row.company}</span></>}<Period record={row} /></td>
-            {"name" in row && <td>{row.job ? <><span>{row.job.company}</span><span className="career-secondary">{row.job.title}</span></> : <span className="career-personal">Personal</span>}</td>}
-            <td>{row.summary && <p className="career-row-summary">{row.summary}</p>}<KnowMore record={row} disabled={chatBusy || busy} onOpen={onOpen} /></td>
-          </tr>
-          {"name" in row && row.skills.length > 0 && <tr className="career-skills-row"><td colSpan={3}><Skills skills={row.skills} /></td></tr>}
-        </tbody>)}
-      </table>
-    </div>
+    <ul className="career-records" aria-label={`${label} records`}>
+      {data.items.map((row) => <li key={row.id} className="career-record">
+        <h4 className="career-record-title">{"name" in row ? row.name : row.title}</h4>
+        <div className="career-record-meta">
+          <span>{"name" in row ? row.job?.company ?? "Personal project" : row.company}</span>
+          <Period record={row} />
+        </div>
+        {row.summary && <p className="career-row-summary">{row.summary}</p>}
+        <div className="career-record-actions">
+          {"name" in row && <Skills skills={row.skills} />}
+          <KnowMore record={row} disabled={chatBusy || busy} onOpen={onOpen} />
+        </div>
+      </li>)}
+    </ul>
     {!data.items.length && <p className="career-empty">{data.total ? "No matches for this filter. Try another word." : "No matching records to display."}</p>}
     <div className="career-list-footer">
       <span role="status">{busy ? "Loading…" : `${start}–${end} of ${data.matched_total}${data.filter ? ` matching · ${data.total} total` : ""}`}</span>
@@ -215,7 +224,7 @@ function ResumeDownload({ data }: { data: ResumeDownloadData }) {
       <span className="resume-document-icon" aria-hidden="true">
         <svg width="27" height="32" viewBox="0 0 27 32" fill="none"><path d="M16 2H5a2 2 0 0 0-2 2v24a2 2 0 0 0 2 2h17a2 2 0 0 0 2-2V10L16 2Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M16 2v8h8M8 17h11M8 22h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </span>
-      <div className="resume-download-copy"><span className="career-eyebrow">TAKE A CLOSER LOOK</span><h3>{data.title}</h3><p>PDF <span aria-hidden="true">·</span> {size}</p></div>
+      <div className="resume-download-copy"><h3>{data.title}</h3><p>PDF <span aria-hidden="true">·</span> {size}</p></div>
     </div>
     <button type="button" className="resume-download-button" disabled={downloading || unavailable}
       aria-busy={downloading} aria-describedby={error ? errorId : undefined} onClick={() => void download()}>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PublicHeader } from "@/components/public-header";
 import { ChatAnswer } from "@/components/chat-answer";
 import { ChatActivityView } from "@/components/chat-activity";
 import { ChatComponentView } from "@/components/chat-components";
-import type { DetailAction } from "@/lib/chat-components";
+import type { ChatComponent, DetailAction } from "@/lib/chat-components";
+import "./chat-workspace.css";
 import {
   completedHistory,
   completedResumeState,
@@ -14,6 +15,18 @@ import {
   type ChatSource,
   type ChatTurn,
 } from "@/lib/chat";
+
+const desktopQuery = "(min-width: 1024px)";
+function subscribeDesktop(onChange: () => void) {
+  const query = window.matchMedia(desktopQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+function desktopSnapshot() { return window.matchMedia(desktopQuery).matches; }
+function serverDesktopSnapshot() { return false; }
+function hasResults(turn: ChatTurn) {
+  return turn.blocks.some((block) => block.type === "component" && block.component.type !== "resume_download");
+}
 
 const prompts = [
   { title: "The career overview", question: "Give me an overview of your career." },
@@ -66,6 +79,14 @@ export function CareerChat() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [selectedResultsTurnId, setSelectedResultsTurnId] = useState<number | null>(null);
+  const desktop = useSyncExternalStore(subscribeDesktop, desktopSnapshot, serverDesktopSnapshot);
+  const resultTurns = turns.filter(hasResults);
+  const selectedResults = resultTurns.find((turn) => turn.id === selectedResultsTurnId) ?? resultTurns.at(-1);
+  const resultsAvailable = Boolean(selectedResults);
+  const transcript = useRef<HTMLElement>(null);
+  const resultsBody = useRef<HTMLDivElement>(null);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
@@ -74,7 +95,8 @@ export function CareerChat() {
 
   useEffect(() => {
     function onScroll() {
-      follow.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 180;
+      if (!window.matchMedia(desktopQuery).matches)
+        follow.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 180;
     }
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
@@ -83,15 +105,22 @@ export function CareerChat() {
     };
   }, []);
 
+  // Follow before reflow-generated scroll events can be mistaken for reader scrolling.
+  useLayoutEffect(() => {
+    if (!turns.length || !follow.current) return;
+    if (desktop && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+    else bottom.current?.scrollIntoView({ block: "end" });
+  }, [turns, desktop]);
+
   useEffect(() => {
-    if (turns.length && follow.current) bottom.current?.scrollIntoView({ block: "end" });
-  }, [turns]);
+    if (resultsBody.current) resultsBody.current.scrollTop = 0;
+  }, [selectedResults?.id, desktop]);
 
   useEffect(() => {
     if (!input.current) return;
     input.current.style.height = "auto";
     input.current.style.height = `${Math.min(input.current.scrollHeight, 160)}px`;
-  }, [draft]);
+  }, [draft, desktop, resultsAvailable]);
 
   function updateTurn(id: number, update: Partial<ChatTurn> | ((turn: ChatTurn) => Partial<ChatTurn>)) {
     setTurns((current) => current.map((turn) => turn.id === id
@@ -113,6 +142,7 @@ export function CareerChat() {
     follow.current = true;
     const turn: ChatTurn = { id, question: message, answer: "", blocks: [], action, status: "pending", sources: [] };
     setTurns([...previous, turn]);
+    setSelectedResultsTurnId(null);
     setDraft("");
     setBusy(true);
     setAnnouncement(chatActivityAnnouncement());
@@ -192,6 +222,7 @@ export function CareerChat() {
     active.current?.controller.abort();
     active.current = null;
     setTurns([]);
+    setSelectedResultsTurnId(null);
     setDraft("");
     setBusy(false);
     setAnnouncement("New conversation started.");
@@ -199,12 +230,29 @@ export function CareerChat() {
     input.current?.focus();
   }
 
+  function componentView(turn: ChatTurn, blockIndex: number, component: ChatComponent) {
+    return <ChatComponentView data={component} busy={busy}
+      onOpen={(question, action) => void send(question, undefined, action)}
+      onUpdate={(data) => {
+        if (!desktop) follow.current = false;
+        updateTurn(turn.id, (current) => ({
+          blocks: current.blocks.map((item, index) => index === blockIndex && item.type === "component"
+            ? { ...item, component: data } : item),
+        }));
+      }} />;
+  }
+
+  function showResults(id: number) {
+    setSelectedResultsTurnId(id);
+    requestAnimationFrame(() => resultsHeading.current?.focus({ preventScroll: true }));
+  }
+
   return (
-    <div className={`portfolio${turns.length ? " has-conversation" : ""}`}>
+    <div className={`portfolio career-chat-page${turns.length ? " has-conversation" : ""}${selectedResults ? " has-results" : ""}`}>
       <a className="portfolio-skip" href="#chat-input">Skip to conversation</a>
       <PublicHeader onHomeClick={reset} actions={turns.length > 0 && <button type="button" className="new-conversation" onClick={reset} aria-label="New conversation"><span className="new-conversation-label">New conversation</span><Arrow diagonal /></button>} />
 
-      <main className="chat-main" id="main-content">
+      <main className="chat-main chat-workspace" id="main-content">
         {turns.length === 0 ? (
           <section className="chat-welcome" aria-labelledby="chat-heading">
             <span className="welcome-mark" aria-hidden="true">✳</span>
@@ -220,28 +268,30 @@ export function CareerChat() {
             </div>
           </section>
         ) : (
-          <section className="chat-transcript" role="log" aria-label="Conversation" aria-live="off">
+          <section className="chat-transcript" ref={transcript} role="log" aria-label="Conversation" aria-live="off"
+            tabIndex={desktop ? 0 : undefined}
+            onScroll={(event) => {
+              if (!desktop) return;
+              const element = event.currentTarget;
+              follow.current = element.scrollHeight - element.clientHeight - element.scrollTop < 120;
+            }}>
             <h1 className="sr-only">A conversation about my career</h1>
             {turns.map((turn, index) => (
-              <article className="chat-turn" key={turn.id}>
+              <article className="chat-turn" key={turn.id} data-turn-id={turn.id}>
                 <div className="chat-question"><span className="sr-only">You: </span>{turn.question}</div>
                 <div className="chat-answer">
                   <div className="answer-identity"><span className="answer-mark" aria-hidden="true">✳</span><span>Thibault’s assistant<small>AI</small></span></div>
                   {turn.status === "pending" && <ChatActivityView activity={turn.activity} writing={turn.blocks.length > 0} />}
                   {turn.blocks.map((block, blockIndex) => block.type === "text"
                     ? <div className="answer-content" key={blockIndex}><ChatAnswer text={block.text} /></div>
-                    : <div className="answer-component" key={blockIndex}>
+                    : <div className={`answer-component${block.component.type === "resume_download" ? " answer-resume" : ""}`} key={blockIndex} data-block-index={blockIndex}>
                       <div className="answer-content"><ChatAnswer text={block.introduction} /></div>
-                      <ChatComponentView data={block.component} busy={busy}
-                        onOpen={(question, action) => void send(question, undefined, action)}
-                        onUpdate={(data) => {
-                          follow.current = false;
-                          updateTurn(turn.id, (current) => ({
-                            blocks: current.blocks.map((item, index) => index === blockIndex && item.type === "component"
-                              ? { ...item, component: data } : item),
-                          }));
-                        }} />
+                      {(!desktop || block.component.type === "resume_download") && componentView(turn, blockIndex, block.component)}
                     </div>)}
+                  {desktop && hasResults(turn) && <button type="button" className="view-results" aria-controls="chat-results"
+                    aria-pressed={selectedResults?.id === turn.id} onClick={() => showResults(turn.id)}>
+                    View results <span aria-hidden="true">↗</span>
+                  </button>}
                   {turn.status === "complete" && <SourceList sources={turn.sources} />}
                   {turn.status === "error" && <p className="chat-error" role="alert">{turn.error}</p>}
                   {turn.status === "stopped" && <p className="chat-stopped">Response stopped.</p>}
@@ -254,6 +304,27 @@ export function CareerChat() {
             <div ref={bottom} />
           </section>
         )}
+
+        {desktop && selectedResults && <aside className="chat-results" id="chat-results" aria-labelledby="chat-results-heading" data-turn-id={selectedResults.id}>
+          <header className="chat-results-header">
+            <div className="chat-results-title"><h2 id="chat-results-heading" ref={resultsHeading} tabIndex={-1}>Related work</h2>
+              {resultTurns.length > 1 && <button type="button" className="latest-results" disabled={selectedResultsTurnId === null}
+                onClick={() => setSelectedResultsTurnId(null)}>Latest results</button>}
+            </div>
+            {resultTurns.length > 1 && <label className="chat-results-select">Results for
+              <select value={selectedResults.id} onChange={(event) => setSelectedResultsTurnId(Number(event.target.value))}>
+                {[...resultTurns].reverse().map((turn) => <option key={turn.id} value={turn.id}>{turn.question}</option>)}
+              </select>
+            </label>}
+            <p className="chat-results-question">{selectedResults.question}</p>
+          </header>
+          <div className="chat-results-body" ref={resultsBody} tabIndex={0} role="region" aria-label="Selected results">
+            {selectedResults.blocks.map((block, blockIndex) => block.type === "component" && block.component.type !== "resume_download"
+              ? <div className="chat-result-component" key={`${selectedResults.id}-${blockIndex}`} data-block-index={blockIndex}>
+                {componentView(selectedResults, blockIndex, block.component)}
+              </div> : null)}
+          </div>
+        </aside>}
 
         <div className="composer-area">
           <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); void send(draft); }}>
@@ -271,7 +342,7 @@ export function CareerChat() {
                 }
               }}
               maxLength={4000}
-              rows={2}
+              rows={1}
               aria-describedby={draft.length > 3500 ? "composer-count" : undefined}
             />
             <div className="composer-controls">

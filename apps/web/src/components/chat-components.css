@@ -1,0 +1,287 @@
+.portfolio .career-list,
+.portfolio .career-card {
+  margin: 0;
+  border-radius: 12px;
+}
+
+.portfolio .career-list-toolbar {
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.portfolio .career-list h3 {
+  font-size: 17px;
+  letter-spacing: -.3px;
+}
+
+.portfolio .career-filter {
+  width: 190px;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.portfolio .career-filter-notice {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+.portfolio .career-filter-notice button {
+  min-height: 32px;
+}
+
+.portfolio .career-records {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portfolio .career-record {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.portfolio .career-record-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -.1px;
+}
+
+.portfolio .career-record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 2px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.portfolio .career-record-meta .career-period {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.portfolio .career-row-summary {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.portfolio .career-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  column-gap: 12px;
+  row-gap: 4px;
+  margin-top: 8px;
+}
+
+.portfolio .career-skills-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.portfolio .career-record-actions .career-skills-group {
+  flex: 1 1 220px;
+}
+
+.portfolio .career-skills-group .career-skills {
+  margin: 0;
+}
+
+.portfolio .career-skills-group .career-skills li {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 6px;
+}
+
+.portfolio .career-skills-more {
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.portfolio .career-skills-more summary {
+  cursor: pointer;
+  padding: 4px 2px;
+  white-space: nowrap;
+}
+
+.portfolio .career-skills-more[open] {
+  flex-basis: 100%;
+}
+
+.portfolio .career-skills-more[open] .career-skills {
+  margin-top: 5px;
+}
+
+.portfolio .career-more {
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 3px 0;
+  font-size: 12px !important;
+}
+
+.portfolio .career-list-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.portfolio .career-list-footer nav {
+  gap: 8px;
+}
+
+.portfolio .career-list-footer button {
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.portfolio .career-card {
+  padding: 18px;
+}
+
+.portfolio .career-card header {
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.portfolio .career-card header > div {
+  min-width: 0;
+}
+
+.portfolio .career-card-mark {
+  width: 34px;
+  height: 34px;
+  font-size: 23px;
+  line-height: 34px;
+  border-radius: 9px;
+}
+
+.portfolio .career-card header h3 {
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: -.4px;
+  margin-bottom: 4px;
+}
+
+.portfolio .career-card-context {
+  gap: 0 18px;
+}
+
+.portfolio .career-card-context p {
+  margin: 12px 0 0;
+}
+
+.portfolio .career-card > .career-skills-group {
+  margin-top: 12px;
+}
+
+.portfolio .career-card-links {
+  margin-top: 12px;
+}
+
+.portfolio .career-card-section {
+  margin-top: 10px;
+  line-height: 1.6;
+}
+
+.portfolio .career-card-section > summary {
+  padding: 10px 0;
+}
+
+.portfolio .career-card-section > summary h4 {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.portfolio .resume-download {
+  min-height: 84px;
+  box-sizing: border-box;
+  margin: 12px 0;
+  padding: 14px 16px;
+  gap: 12px;
+  border-radius: 12px;
+}
+
+.portfolio .resume-download-summary {
+  gap: 10px;
+}
+
+.portfolio .resume-document-icon {
+  width: 36px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.portfolio .resume-document-icon svg {
+  width: 21px;
+  height: 26px;
+}
+
+.portfolio .resume-download h3 {
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: -.15px;
+}
+
+.portfolio .resume-download-copy p {
+  margin-top: 3px;
+}
+
+.portfolio .resume-download .resume-download-button {
+  min-height: 44px;
+  padding: 10px 12px;
+  gap: 7px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .portfolio .career-list-toolbar {
+    gap: 10px;
+  }
+
+  .portfolio .career-filter {
+    width: 100%;
+  }
+
+  .portfolio .career-list-footer {
+    padding: 10px 12px;
+  }
+
+  .portfolio .career-list-footer nav {
+    gap: 6px;
+  }
+
+  .portfolio .career-card {
+    padding: 14px;
+  }
+
+  .portfolio .career-card header h3 {
+    font-size: 18px;
+  }
+
+  .portfolio .resume-download {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .portfolio .resume-download .resume-download-button {
+    width: 100%;
+  }
+}
