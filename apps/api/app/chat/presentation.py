@@ -24,8 +24,8 @@ from exact and related result sets separate. Record labels are navigation only;
 use the research evidence to decide relevance.
 Counts alone and aggregate rankings can use no components. Do not convert aggregate
 groups into record lists. Keep exact and related matches distinct in introductions.
-Every selection needs a short, natural AI introduction in the visitor's language,
-grounded in the evidence. Describe why these records answer the question. Do not
+Every selection needs one natural introductory sentence of at most 15 words, in
+the visitor's language, grounded in the evidence. Explain relevance briefly. Do not
 repeat entire records or produce a second table: the interface supplies those fields.
 For lists, the introduction describes the collection chosen by record_ids across
 all its pages; when record_ids is omitted, it describes the full verified target.

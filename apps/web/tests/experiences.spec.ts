@@ -257,6 +257,18 @@ test("public navigation supports keyboards and themes on narrow screens with red
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       }
     }
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect((await page.locator(".public-header").boundingBox())!.y).toBe(0);
+    if (await page.locator(".experience-detail-sidebar").count()) {
+      const sidebar = (await page.locator(".experience-detail-sidebar").boundingBox())!;
+      expect(sidebar.y).toBeGreaterThanOrEqual((await page.locator(".public-header").boundingBox())!.height);
+    }
+    await experiences.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(navigation.getByRole("link", { name: /^Jobs/ })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(experiences).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.setViewportSize({ width: 390, height: 844 });
     await captureThemes(page, `public-${path.slice(1).replaceAll("/", "-")}`);
   }

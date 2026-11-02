@@ -1,0 +1,106 @@
+import { expect, test, type Page } from "@playwright/test";
+
+type StreamWindow = Window & { pushChatEvent: (name: string, payload: unknown) => void };
+
+async function controlledChat(page: Page) {
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    window.fetch = async (url, init) => {
+      if (String(url) !== "/api/chat") return original(url, init);
+      let closed = false;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          (window as unknown as StreamWindow).pushChatEvent = (name, payload) => {
+            controller.enqueue(new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`));
+            if (name === "done") { closed = true; controller.close(); }
+          };
+          init?.signal?.addEventListener("abort", () => {
+            if (!closed) { closed = true; controller.error(new DOMException("Aborted", "AbortError")); }
+          });
+        },
+        cancel() { closed = true; },
+      });
+      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    };
+  });
+}
+
+async function push(page: Page, name: string, payload: unknown) {
+  await page.evaluate(({ name, payload }) => (window as unknown as StreamWindow).pushChatEvent(name, payload), { name, payload });
+}
+
+const project = {
+  id: 1, name: "Python delivery platform", role: "Engineer", kind: "personal", job: null,
+  start_month: "2024-01", end_month: null, ongoing: true, summary: "Built useful Python tools.",
+  skills: ["Python"], action: { type: "show_project", token: "project-1" },
+};
+const list = {
+  type: "project_list", token: "projects", total: 2, matched_total: 2,
+  page: 1, page_size: 1, filter: "", items: [project],
+};
+const card = { type: "project_card", record: { ...project, description: "Delivered the platform.", outcomes: "Improved reliability." } };
+
+test("desktop transcript follows streaming until the reader scrolls away", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await controlledChat(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "The career overview" }).click();
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await push(page, "delta", { text: Array.from({ length: 60 }, (_, index) => `Career example ${index + 1}.`).join("\n\n") });
+  const transcript = page.getByRole("log", { name: "Conversation" });
+  await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(500);
+  await transcript.evaluate(async (element) => {
+    element.scrollTop = 0;
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  });
+  await push(page, "delta", { text: "\n\nA final streamed example." });
+  await expect(transcript).toContainText("A final streamed example.");
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  await push(page, "done", { sources: [] });
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  const composer = (await page.locator(".chat-composer").boundingBox())!;
+  expect(composer.height).toBeGreaterThanOrEqual(64);
+  expect(composer.height).toBeLessThanOrEqual(76);
+  expect(composer.y + composer.height).toBeLessThanOrEqual(768);
+});
+
+test("streamed results preserve list state, input focus, and an earlier result selection", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await controlledChat(page);
+  await page.route("**/api/chat/components/page", (route) => route.fulfill({
+    json: { ...list, filter: "Python", matched_total: 1 },
+  }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await push(page, "delta", { text: "I build practical engineering tools." });
+  await push(page, "component", { introduction: "Explore these projects.", component: list });
+  const pane = page.getByRole("complementary", { name: "Related work" });
+  const filter = pane.getByLabel("Filter projects");
+  await filter.fill("Python");
+  await expect(pane.getByRole("status")).toHaveText("1–1 of 1 matching · 2 total");
+  await expect(filter).toBeFocused();
+  await push(page, "component", { introduction: "Here is one example.", component: card });
+  await expect(pane.getByRole("region", { name: `${project.name} project card` })).toBeVisible();
+  await expect(filter).toHaveValue("Python");
+  await expect(filter).toBeFocused();
+  await expect(pane.getByRole("status")).toHaveText("1–1 of 1 matching · 2 total");
+  await push(page, "done", { sources: [] });
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+
+  await page.getByLabel("Ask about my career").fill("Show another project.");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await page.getByRole("button", { name: "View results" }).click();
+  await expect(pane.getByRole("heading", { name: "Related work" })).toBeFocused();
+  await push(page, "component", { introduction: "Another example.", component: card });
+  await expect(pane).toHaveAttribute("data-turn-id", "1");
+  await expect(pane.locator(".chat-results-question")).toHaveText("Which projects best show the impact of your work?");
+  await expect(pane.getByRole("heading", { name: "Related work" })).toBeFocused();
+  await pane.getByRole("button", { name: "Latest results" }).click();
+  await expect(pane).toHaveAttribute("data-turn-id", "2");
+  await expect(pane.locator(".chat-results-question")).toHaveText("Show another project.");
+  await push(page, "done", { sources: [] });
+});

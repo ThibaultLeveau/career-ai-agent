@@ -1,4 +1,7 @@
-.portfolio-header.public-header { position: relative; z-index: 20; gap: 28px; padding-top: 23px; padding-bottom: 23px; }
+.portfolio { --public-header-height: 80px; padding-top: var(--public-header-height); }
+.portfolio-header.public-header { position: fixed; inset: 0 0 auto; z-index: 30; gap: 28px; height: var(--public-header-height); max-width: none; padding: 18px max(24px, calc((100% - 1360px) / 2)); background: var(--background); border-bottom: 1px solid var(--border); }
+.portfolio .portfolio-skip { z-index: 40; }
+.portfolio #main-content, .portfolio #chat-input { scroll-margin-top: calc(var(--public-header-height) + 16px); }
 .public-header .portfolio-brand { white-space: nowrap; }
 .public-navigation { display: flex; align-items: center; gap: 5px; margin-left: 20px; margin-right: auto; }
 .portfolio .public-nav-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 13px; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; font-size: 12px; font-weight: 500; line-height: 1.4; transition: color .18s, background .18s; }
@@ -23,8 +26,9 @@
   .public-header .portfolio-brand { gap: 9px; font-size: 12px; }
 }
 @media (max-width: 600px) {
-  .portfolio-header.public-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 17px; padding: 20px 20px 12px; }
-  .public-navigation { grid-column: 1 / -1; grid-row: 2; margin: 0; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  .portfolio { --public-header-height: 128px; }
+  .portfolio-header.public-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; padding: 16px 20px 12px; }
+  .public-navigation { grid-column: 1 / -1; grid-row: 2; margin: 0; }
   .public-header-actions { grid-column: 2; grid-row: 1; }
   .public-header .portfolio-logo { width: 26px; height: 26px; }
   .portfolio .public-nav-link { min-height: 38px; padding: 8px 12px; }

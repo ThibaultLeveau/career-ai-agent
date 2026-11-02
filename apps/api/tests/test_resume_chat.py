@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.chat import agents, assessment, providers, resource_reader, resumes, service
+from app.chat.agent_prompts import VISITOR_WRITING_RULES
 from app.chat.components import ComponentEvent, ResumeDownload
 from app.chat.schemas import ChatRequest
 from app.content.models import Document
@@ -42,6 +43,8 @@ def install_candidates(monkeypatch, response, rows=None):
         prompts.append(json.loads(prompt))
         assert "untrusted data" in instructions
         assert "Never choose the newest file merely as fallback" in instructions
+        assert VISITOR_WRITING_RULES in instructions
+        assert "only to the visitor-facing clarification question" in instructions
         return json.dumps(response)
 
     monkeypatch.setattr(providers, "complete", complete)

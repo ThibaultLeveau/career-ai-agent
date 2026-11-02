@@ -112,22 +112,7 @@
 .career-filter-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--accent-soft); color: var(--text-secondary); font-size: 11px; }
 .career-filter-notice button { flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; color: var(--accent); background: var(--surface); font: inherit; }
 .career-filter-notice button:disabled { opacity: .5; }
-.career-table-scroll { width: 100%; overflow-x: auto; }
-.career-table-scroll:focus-visible { outline-offset: -3px; }
-.career-list table { width: 100%; min-width: 610px; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 12px; line-height: 1.6; }
-.career-project-list .career-title-column, .career-experience-column { width: 30%; }
-.career-project-list .career-summary-column, .career-job-list .career-title-column { width: 40%; }
-.career-job-list .career-summary-column { width: 60%; }
-.career-list th { background: var(--surface-subtle); color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .8px; font-weight: 600; border-top: 1px solid var(--border); }
-.career-list th, .career-list td { padding: 13px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.career-list th:first-child, .career-record > tr:first-child > td:first-child { padding-left: 20px; }
-.career-list td:last-child { min-width: 200px; }
-.career-list td { color: var(--text-secondary); overflow-wrap: anywhere; }
-.career-list td > strong { color: var(--text); font-weight: 600; }
 .career-record:hover { background: var(--surface-hover); }
-.career-record-with-skills > tr:first-child > td { border-bottom: 0; padding-bottom: 8px; }
-.career-list .career-skills-row > td { padding: 0 20px 14px; }
-.career-skills-row .career-skills { margin: 0; }
 .career-period { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
 .career-list .career-period { display: block; margin-top: 6px; }
 .career-secondary { display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted); }

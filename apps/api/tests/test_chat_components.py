@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.admin.schemas import ChatComponents, RagSettings
 from app.chat import agents, components, presentation, providers, query_engine
+from app.chat.agent_prompts import VISITOR_WRITING_RULES
 from app.chat.query_schema import DatabaseRequest, SelectQuery
 from app.chat.schemas import ChatRequest, DetailAction
 from app.chat.text import bounded_history
@@ -525,6 +526,8 @@ def test_presentation_repair_and_component_event_follow_text(monkeypatch):
 
     async def tool_turn(config, key, messages, instructions, tools, **kwargs):
         attempts.append(messages)
+        assert VISITOR_WRITING_RULES in instructions
+        assert "one natural introductory sentence of at most 15 words" in instructions
         return turn(
             call(
                 "select_presentation",

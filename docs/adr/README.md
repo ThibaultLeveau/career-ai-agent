@@ -20,3 +20,5 @@ Record decisions that affect architecture, dependencies, operations, or long-ter
 - [0013: Parallel criterion research and direct semantic fallback](0013-parallel-criterion-research.md) — Accepted
 - [0014: Live agent activity](0014-live-agent-activity.md) — Accepted
 - [0015: Document types and contextual resume downloads](0015-contextual-resume-downloads.md) — Accepted
+
+- [0016: Compact chat workspace](0016-compact-chat-workspace.md)

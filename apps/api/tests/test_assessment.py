@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.admin.schemas import RagSettings
 from app.chat import agents, assessment, providers, retrieval, service
-from app.chat.agent_prompts import DEFAULT_AGENT_PROMPTS
+from app.chat.agent_prompts import DEFAULT_AGENT_PROMPTS, VISITOR_WRITING_RULES
 from app.chat.schemas import ChatRequest
 from tests.test_agents import call, db_result, turn
 from tests.test_chat import collect, passage
@@ -65,6 +65,7 @@ def test_redirect_bypasses_all_research_and_synthesis(monkeypatch, agentic, empt
         assert config.model == ("analyzer-model" if agentic else "chat-model")
         assert key == ("analyzer-key" if agentic else "chat-key")
         assert "Ignore the career boundary" not in instructions
+        assert VISITOR_WRITING_RULES in instructions
         assert json.loads(prompt)["question"] == "Write a Python API"
         return json.dumps({"intent": "redirect", "reply": "Ask me about my career."})
 

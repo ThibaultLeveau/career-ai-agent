@@ -602,9 +602,9 @@ test("detail narratives are independent accessible sections with safe Markdown a
   await captureThemes(page, "chat-collapsible-details");
 });
 
-test("compact lists place dates under titles, widen experience, and cap summaries at four lines", async ({ page }) => {
+test("compact lists show metadata, two-line summaries, and expandable skills", async ({ page }) => {
   const data = { ...projectList(), items: [
-    { ...projectRecord(1), summary: "Delivered reliable engineering tools and searchable documentation for internal teams. ".repeat(3).slice(0, 280) },
+    { ...projectRecord(1), skills: ["Python", "PostgreSQL", "React", "Docker", "FastAPI", "RAG"], summary: "Delivered reliable engineering tools and searchable documentation for internal teams. ".repeat(3).slice(0, 280) },
     { ...projectRecord(2), summary: "" },
   ], total: 2, matched_total: 2, scope_label: "Projects from this experience" };
   await mockChat(page, [componentReply([data])]);
@@ -612,17 +612,22 @@ test("compact lists place dates under titles, widen experience, and cap summarie
   await page.getByRole("button", { name: "Projects & impact" }).click();
   const list = page.getByRole("region", { name: "Projects list", exact: true });
   await expect(list.getByText("Projects from this experience")).toBeVisible();
-  await expect(list.getByRole("columnheader")).toHaveText(["Project", "Experience", "Summary"]);
-  await expect(list.locator("tbody").first().locator("td").first()).toContainText("Jan 2024 – Present");
-  const widths = await list.getByRole("columnheader").evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width));
-  expect(widths[1] / widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(0.3, 1);
-  await expect(list.locator("tbody").nth(1).locator(".career-row-summary")).toHaveCount(0);
+  await expect(list.getByRole("table")).toHaveCount(0);
+  await expect(list.locator(".career-record").first()).toContainText("Jan 2024 – Present");
+  await expect(list.locator(".career-record").first()).toContainText("Acme");
+  await expect(list.locator(".career-record").nth(1).locator(".career-row-summary")).toHaveCount(0);
+  const skills = list.locator(".career-record").first();
+  await expect(skills.getByLabel("Associated skills").getByRole("listitem")).toHaveCount(4);
+  await expect(skills.getByLabel("Additional skills")).not.toBeVisible();
+  await skills.locator("summary", { hasText: "+2 skills" }).click();
+  await expect(skills.getByLabel("Additional skills")).toContainText("FastAPI");
+  await skills.locator("summary", { hasText: "+2 skills" }).click();
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const sizing = await list.locator(".career-row-summary").evaluate((element) => ({
       height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight),
     }));
-    expect(sizing.height).toBeLessThanOrEqual(sizing.lineHeight * 4 + 1);
+    expect(sizing.height).toBeLessThanOrEqual(sizing.lineHeight * 2 + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await captureThemes(page, `chat-compact-list-${width}`);
   }
@@ -687,13 +692,13 @@ test("job details show the job card and all associated projects with separate in
   await page.getByLabel("Ask about my career").fill("List all your jobs");
   await page.getByRole("button", { name: "Send message" }).click();
   const list = page.getByRole("region", { name: "Jobs list", exact: true });
-  await expect(list.getByRole("row")).toHaveCount(6);
+  await expect(list.locator(".career-record")).toHaveCount(5);
   await list.getByRole("button", { name: "Next" }).click();
   await expect(list.getByRole("status")).toHaveText("6–6 of 6");
   await list.getByRole("button", { name: "Know more about Software engineer 6 at Acme" }).click();
   const answer = page.locator(".chat-turn").last();
-  await expect(answer.getByRole("region", { name: "Software engineer 6 job card" })).toContainText("Owned delivery and mentored engineers.");
-  await expect(answer.getByRole("region", { name: "Projects list", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Software engineer 6 job card" })).toContainText("Owned delivery and mentored engineers.");
+  await expect(page.getByRole("region", { name: "Projects list", exact: true })).toBeVisible();
   await expect(answer.locator(".answer-component > .answer-content")).toHaveCount(2);
   expect((await requests(page))[1].action).toEqual({ type: "show_job", token: "job-6" });
   await captureThemes(page, "chat-job-detail");
@@ -765,7 +770,7 @@ test("streams a resume call to action after career cards and downloads its PDF w
   await expect(card).toBeVisible();
   await expect(card.getByRole("heading")).toHaveText(resumeCard.title);
   await expect(card).toContainText("PDF · 243 KB");
-  await expect(page.locator(".answer-component").last()).toContainText(resumeCard.title);
+  await expect(page.locator(".chat-turn .answer-component").last()).toContainText(resumeCard.title);
   const button = card.getByRole("button", { name: "Download Resume", exact: true });
   await button.focus();
   await expect(button).toBeFocused();
@@ -890,4 +895,118 @@ test("malformed resume metadata never renders a download button", async ({ page 
   await page.getByRole("button", { name: "The career overview" }).click();
   await expect(page.locator(".chat-turn").getByRole("alert")).toContainText("interrupted");
   await expect(page.getByRole("button", { name: "Download Resume", exact: true })).toHaveCount(0);
+});
+
+test("desktop workspace fits a laptop and mobile stacks results with the original answer", async ({ page }) => {
+  const data = { ...projectList(), total: 4, matched_total: 4, page_size: 3,
+    items: [1, 2, 3].map((id) => ({ ...projectRecord(id),
+      name: `Python AI knowledge assistant for CAD documentation ${id}`,
+      skills: ["Python", "FastAPI", "PostgreSQL", "RAG", "Docker", "AWS Bedrock"],
+    })) };
+  await mockChat(page, [componentReply([data, resumeCard],
+    "Yes, my experience fits applied Python AI engineering.\n\n- Built production RAG applications.\n- Developed Python and FastAPI services.\n- Automated engineering documentation.")]);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/");
+  await page.getByLabel("Ask about my career").fill("We need a Python AI engineer. Are you a good candidate?");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  const results = page.getByRole("complementary", { name: "Related work" });
+  const resume = page.getByRole("region", { name: `${resumeCard.title} resume download` });
+  for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await expect(results).toBeVisible();
+    const text = (await page.locator(".chat-transcript").boundingBox())!;
+    const panel = (await results.boundingBox())!;
+    const card = (await resume.boundingBox())!;
+    const composer = (await page.locator(".chat-composer").boundingBox())!;
+    const header = (await page.locator(".public-header").boundingBox())!;
+    expect(panel.x).toBeGreaterThanOrEqual(text.x + text.width);
+    expect(panel.y).toBeGreaterThanOrEqual(header.height);
+    expect(panel.y + panel.height).toBeLessThanOrEqual(viewport.height);
+    expect(card.x + card.width).toBeLessThanOrEqual(panel.x);
+    expect(card.y).toBeGreaterThanOrEqual(header.height);
+    expect(card.y + card.height).toBeLessThanOrEqual(composer.y);
+    expect(card.height).toBeLessThanOrEqual(96);
+    expect(composer.height).toBeLessThanOrEqual(76);
+    expect(composer.y + composer.height).toBeLessThanOrEqual(viewport.height);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+    await captureThemes(page, `compact-workspace-${viewport.width}`);
+  }
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(results).toHaveCount(0);
+    await expect(page.locator(".chat-turn .career-list")).toHaveCount(1);
+    await expect(page.locator(".chat-turn .resume-download")).toHaveCount(1);
+    const prose = (await page.locator(".answer-content").first().boundingBox())!;
+    const list = (await page.locator(".career-list").boundingBox())!;
+    expect(list.y).toBeGreaterThan(prose.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await captureThemes(page, `compact-workspace-${width}`);
+  }
+});
+
+test("results follow new answers, allow earlier selection, and preserve confirmed list state", async ({ page }) => {
+  const job = { type: "job_card", record: { ...jobRecord(9), responsibilities: "Owned delivery.", achievements: "" } };
+  await mockChat(page, [componentReply([projectList()]), { ...componentReply([job]), controlled: true },
+    reply("I can discuss those responsibilities."), componentReply([resumeCard])]);
+  await page.route("**/api/chat/components/page", async (route) => {
+    const request = route.request().postDataJSON();
+    await route.fulfill({ json: projectList(request.page, request.filter) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  const list = page.getByRole("region", { name: "Projects list", exact: true });
+  await list.getByRole("button", { name: "Next" }).click();
+  await expect(list.getByRole("status")).toHaveText("6–7 of 7");
+  await page.getByLabel("Ask about my career").fill("Show that experience");
+  await page.getByLabel("Ask about my career").press("Enter");
+  await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
+  await page.getByRole("button", { name: "View results", exact: true }).first().click();
+  await advanceChatStream(page);
+  await advanceChatStream(page);
+  await expect(page.getByRole("region", { name: "Software engineer 9 job card" })).toHaveCount(0);
+  await expect(list.getByRole("status")).toHaveText("6–7 of 7");
+  await advanceChatStream(page);
+  await advanceChatStream(page);
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  await page.getByRole("button", { name: "Latest results", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Software engineer 9 job card" })).toBeVisible();
+  await page.getByRole("button", { name: "View results", exact: true }).first().click();
+  await expect(list.getByRole("status")).toHaveText("6–7 of 7");
+  await list.getByLabel("Filter projects").fill("Legacy");
+  await expect(list.getByRole("status")).toHaveText("1–1 of 1 matching · 7 total");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".career-list")).toHaveCount(1);
+  await expect(page.locator(".career-card")).toHaveCount(1);
+  await expect(list.getByLabel("Filter projects")).toHaveValue("Legacy");
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(list.getByLabel("Filter projects")).toHaveValue("Legacy");
+  for (const question of ["Tell me about those responsibilities", "Send your resume"]) {
+    await page.getByLabel("Ask about my career").fill(question);
+    await page.getByLabel("Ask about my career").press("Enter");
+    await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Software engineer 9 job card" })).toBeVisible();
+    await expect(page.locator(".chat-results-question")).toContainText("Show that experience");
+  }
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await expect(page.getByRole("complementary", { name: "Related work" })).toHaveCount(0);
+  await expect(page.locator(".career-list, .career-card, .resume-download")).toHaveCount(0);
+});
+
+test("transcript and results scroll independently beneath fixed navigation", async ({ page }) => {
+  const data = { ...projectList(), items: projectList().items.map((item) => ({ ...item, summary: "Delivery and engineering impact. ".repeat(8) })) };
+  await mockChat(page, [componentReply([data], "A concise point.\n\n".repeat(50))]);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Projects & impact" }).click();
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  const transcript = page.locator(".chat-transcript");
+  await transcript.evaluate((element) => { element.scrollTop = 0; });
+  const pane = page.locator(".chat-results-body");
+  await pane.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect((await page.locator(".public-header").boundingBox())!.y).toBe(0);
+  const composer = (await page.locator(".chat-composer").boundingBox())!;
+  expect(composer.y + composer.height).toBeLessThanOrEqual(768);
 });
